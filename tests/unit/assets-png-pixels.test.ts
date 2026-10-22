@@ -884,3 +884,105 @@ describe('png pixel decoder pins', () => {
     expect(codeOf(() => decodePngRgba8(tallRgba, { maxWidth: 2 ** 25, maxHeight: 2 ** 28, maxPixels: 2 ** 52 }))).toBe('limit');
   });
 });
+
+describe('png pixel decoder, correction 2', () => {
+  function failureOf(run: () => unknown): string {
+    try {
+      run();
+    } catch (error) {
+      if (error instanceof PngPixelError) return `${error.code}|${error.message}`;
+      return `not typed: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`;
+    }
+    return 'no throw';
+  }
+
+  const grayOne = testPng({ width: 1, height: 1, colorType: 0, raw: rawNone(1, 1, 0, [9]) });
+
+  it('rejects a NaN maxWidth limit', () => {
+    expect(failureOf(() => decodePngRgba8(grayOne, { maxWidth: NaN }))).toBe('limit|Invalid limit value');
+  });
+
+  it('rejects a NaN maxHeight limit', () => {
+    expect(failureOf(() => decodePngRgba8(grayOne, { maxHeight: NaN }))).toBe('limit|Invalid limit value');
+  });
+
+  it('rejects a NaN maxPixels limit', () => {
+    expect(failureOf(() => decodePngRgba8(grayOne, { maxPixels: NaN }))).toBe('limit|Invalid limit value');
+  });
+
+  it('rejects a NaN maxInputBytes limit', () => {
+    expect(failureOf(() => decodePngRgba8(grayOne, { maxInputBytes: NaN }))).toBe('limit|Invalid limit value');
+  });
+
+  it('checks a NaN limit before the input type', () => {
+    expect(failureOf(() => decodePngRgba8([9] as unknown as Uint8Array, { maxWidth: NaN }))).toBe('limit|Invalid limit value');
+  });
+
+  it('keeps +Infinity limits as no explicit cap', () => {
+    // 16385 is above DEFAULT_MAX_WIDTH (16384): a clamp to the default would reject this image; a real no-cap accepts it.
+    const wide = testPng({ width: 16385, height: 1, colorType: 0, raw: rawNone(16385, 1, 0, new Array(16385).fill(0)) });
+    const limits = { maxWidth: Infinity, maxHeight: Infinity, maxPixels: Infinity, maxInputBytes: Infinity };
+    let width = 0;
+    const failure = failureOf(() => {
+      width = decodePngRgba8(wide, limits).width;
+    });
+    expect(failure).toBe('no throw');
+    expect(width).toBe(16385);
+  });
+
+  it('keeps a negative maxWidth fail-closed with its current message', () => {
+    expect(failureOf(() => decodePngRgba8(grayOne, { maxWidth: -1 }))).toBe('limit|Image past the limit');
+  });
+
+  it('maps a header-sized allocation failure to a typed limit error', () => {
+    const stream = new Uint8Array([0x78, 0x01, 0x01, 0x01, 0x00, 0xfe, 0xff, 0x00, 0x00, 0x01, 0x00, 0x01]);
+    const ihdr = new Uint8Array(13);
+    const view = new DataView(ihdr.buffer);
+    view.setUint32(0, 2 ** 30, false);
+    view.setUint32(4, 2 ** 20, false);
+    ihdr[8] = 8;
+    ihdr[9] = 0;
+    ihdr[10] = 0;
+    ihdr[11] = 0;
+    ihdr[12] = 0;
+    const png = concat([
+      new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      chunkBytes('IHDR', ihdr),
+      chunkBytes('IDAT', stream),
+      chunkBytes('IEND', new Uint8Array(0)),
+    ]);
+    expect(failureOf(() => decodePngRgba8(png, {
+      maxWidth: 2 ** 31,
+      maxHeight: 2 ** 21,
+      maxPixels: Number.MAX_SAFE_INTEGER,
+      maxInputBytes: 2 ** 20,
+    }))).toBe('limit|Image too large to allocate');
+  });
+
+  it('rejects a non-numeric limit that converts to NaN', () => {
+    expect(failureOf(() => decodePngRgba8(grayOne, { maxWidth: 'abc' as unknown as number }))).toBe('limit|Invalid limit value');
+    expect(failureOf(() => decodePngRgba8(grayOne, { maxInputBytes: 'abc' as unknown as number }))).toBe('limit|Invalid limit value');
+  });
+
+  it('maps a second-site allocation failure to a typed limit error', () => {
+    // A 200x1 gray image needs 201 bytes of expected output (site 1) and 800 bytes of RGBA (site 2).
+    // A stub on the global Uint8Array fails any allocation above 500 bytes, so site 1 succeeds and site 2 must map.
+    // The stub is restored in finally, before the assertion runs.
+    const png = testPng({ width: 200, height: 1, colorType: 0, raw: rawNone(200, 1, 0, Array.from({ length: 200 }, (_, i) => i)) });
+    const Original = globalThis.Uint8Array;
+    const limited = new Proxy(Original, {
+      construct(target, args, newTarget) {
+        if (typeof args[0] === 'number' && args[0] > 500) throw new RangeError('stub allocation failed');
+        return Reflect.construct(target, args, newTarget);
+      },
+    });
+    let result = '';
+    globalThis.Uint8Array = limited as unknown as Uint8ArrayConstructor;
+    try {
+      result = failureOf(() => decodePngRgba8(png));
+    } finally {
+      globalThis.Uint8Array = Original;
+    }
+    expect(result).toBe('limit|Image too large to allocate');
+  });
+});

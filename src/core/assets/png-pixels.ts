@@ -57,6 +57,15 @@ function fail(code: PngPixelErrorCode, message: string): never {
   throw new PngPixelError(code, message);
 }
 
+function allocBytes(n: number): Uint8Array {
+  try {
+    return new Uint8Array(n);
+  } catch (error) {
+    if (error instanceof RangeError) fail('limit', 'Image too large to allocate');
+    throw error;
+  }
+}
+
 function u32be(bytes: Uint8Array, pos: number): number {
   return (bytes[pos] * 0x1000000 + (bytes[pos + 1] << 16) + (bytes[pos + 2] << 8) + bytes[pos + 3]) >>> 0;
 }
@@ -139,6 +148,9 @@ export function decodePngRgba8(
   const maxHeight = Math.floor(limits?.maxHeight ?? DEFAULT_MAX_HEIGHT);
   const maxPixels = Math.floor(limits?.maxPixels ?? DEFAULT_MAX_PIXELS);
   const maxInputBytes = Math.floor(limits?.maxInputBytes ?? DEFAULT_MAX_INPUT_BYTES);
+  if (Number.isNaN(maxWidth) || Number.isNaN(maxHeight) || Number.isNaN(maxPixels) || Number.isNaN(maxInputBytes)) {
+    fail('limit', 'Invalid limit value');
+  }
   if (!(bytes instanceof Uint8Array)) fail('chunk', 'Expected bytes');
   if (bytes.length > maxInputBytes) fail('limit', 'Input past the limit');
   if (
@@ -284,7 +296,7 @@ export function decodePngRgba8(
   if (!Number.isSafeInteger(pixels)) fail('limit', 'Image past the limit');
   if (!Number.isSafeInteger(pixels * 4)) fail('limit', 'Image past the limit');
 
-  const out = new Uint8Array(expected);
+  const out = allocBytes(expected);
   let outPos = 0;
   let bitPos = 16;
   const bitEnd = stream.length * 8;
@@ -467,7 +479,7 @@ export function decodePngRgba8(
     }
   }
 
-  const rgba = new Uint8Array(pixels * 4);
+  const rgba = allocBytes(pixels * 4);
   let r = 0;
   if (colorType === 0) {
     for (let y = 0; y < height; y++) {
