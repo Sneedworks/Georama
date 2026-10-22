@@ -112,6 +112,11 @@ export function writeVec2(m: unknown, path: string): GdMath {
   const x = rec['x'] as number;
   const y = rec['y'] as number;
   if (!Number.isFinite(x) || !Number.isFinite(y)) fail('FORMAT', path, 'non-finite Vec2');
+  // Godot Vector2 components are stored as float32. Finite JS numbers can
+  // overflow during narrowing and would otherwise serialize as Infinity.
+  if (!Number.isFinite(Math.fround(x)) || !Number.isFinite(Math.fround(y))) {
+    fail('FORMAT', path, 'Vec2 component outside float32 range');
+  }
   return new GdMath('Vector2', new Float32Array([x, y]));
 }
 
@@ -145,6 +150,11 @@ export function writeColor(m: unknown, path: string): GdMath {
   const a = rec['a'] as number;
   if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b) || !Number.isFinite(a)) {
     fail('FORMAT', path, 'non-finite Color');
+  }
+  // Godot Color components are float32; reject finite values that become
+  // non-finite on conversion so the writer's output remains readable.
+  if (![r, g, b, a].every((component) => Number.isFinite(Math.fround(component)))) {
+    fail('FORMAT', path, 'Color component outside float32 range');
   }
   return new GdMath('Color', new Float32Array([r, g, b, a]));
 }
