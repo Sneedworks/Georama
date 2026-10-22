@@ -1,0 +1,14 @@
+node_modules
+dist/
+out/
+.vite/
+*.log
+# private world data — never commit
+spike/out*/
+spike/corpus.jsonl
+spike/maps.txt
+oracle/
+*.wonderdraft_map
+dist-electron/
+coverage/
+reports/

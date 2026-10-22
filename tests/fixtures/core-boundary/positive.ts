@@ -1,0 +1,11 @@
+import { BRAND } from '../../../src/shared/brand.ts';
+export const bytes = new Uint8Array([1, 2]);
+export const view = new DataView(bytes.buffer);
+export const integer = BigInt(view.getUint8(0));
+export const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false });
+export const encoding: string = decoder.encoding;
+export const text: string = decoder.decode(bytes, { stream: false });
+export const encoder = new TextEncoder();
+export const encoded: Uint8Array = encoder.encode(text);
+export const result: { read: number; written: number } = encoder.encodeInto(text, bytes);
+export { BRAND };
