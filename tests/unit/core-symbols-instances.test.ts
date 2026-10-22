@@ -34,6 +34,49 @@ function keyOf(text: string): string {
   return assetKey(resolveRef('symbol', text));
 }
 
+describe('finite Float32 GPU instance records (I5)', () => {
+  const texture = 'res://sprites/grove_alpha/oak_01';
+  const atlas = lookupFor(keyOf(texture));
+
+  it.each([
+    ['Float32 position overflow', sym({ position: { x: 1e308, y: 0 } })],
+    ['Float32 scale overflow', sym({ scale: { x: 1e308, y: 1 } })],
+    ['translation addition overflow', sym({ position: { x: 1e308, y: 0 }, offset: { x: 1e308, y: 0 } })],
+    ['transform multiplication overflow', sym({ scale: { x: 1e308, y: 1 }, offset: { x: 1e308, y: 0 } })],
+    ['placeholder position overflow', sym({ position: { x: 1e308, y: 0 } }, { embedded: true })],
+  ])('rejects %s without returning partially populated records', (_name, bad) => {
+    const verdict = buildInstances([sym(), bad, sym()], atlas);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.code).toBe('INPUT');
+    expect(verdict.message).toMatch(/^I5: non-finite instance record at 1 component \d+$/);
+  });
+
+  it('rejects a Float32-overflowing atlas placement', () => {
+    const invalidAtlas: AtlasLookup = {
+      ...atlas,
+      placements: [{ ...atlas.placements[0]!, x: 1e308 }],
+    };
+    const verdict = buildInstances([sym()], invalidAtlas);
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.message).toContain('at 0 component 6');
+  });
+
+  it('rejects a Float32-overflowing reserved placement in a placeholder', () => {
+    const invalidAtlas: AtlasLookup = { ...atlas, reserved: { ...RESERVED, x: 1e308 } };
+    const verdict = buildInstances([sym({}, { embedded: true })], invalidAtlas);
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.message).toContain('at 0 component 6');
+  });
+
+  it('accepts large values that remain finite as Float32', () => {
+    const verdict = buildInstances([sym({ position: { x: 1e30, y: -1e30 }, scale: { x: 1e30, y: 1 } })], atlas);
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(Array.from(verdict.records).every(Number.isFinite)).toBe(true);
+  });
+});
+
 describe('E5 transform (I3/I5)', () => {
   it('rotation 0 scale (2,1) offset (0,0) no mirror gives diag(2,1) t=(100,50)', () => {
     const text = 'res://sprites/grove_alpha/oak_01';
