@@ -57,6 +57,27 @@ function fail(code: PngPixelErrorCode, message: string): never {
   throw new PngPixelError(code, message);
 }
 
+function normalizedLimit(value: unknown, fallback: number, name: string): number {
+  // Options are typed in TypeScript, but may also come from untyped callers.
+  const limit = value === undefined ? fallback : value;
+  if (typeof limit !== 'number' || !Number.isFinite(limit) || limit < 0) {
+    fail('limit', `Invalid ${name} limit`);
+  }
+  return Math.floor(limit);
+}
+
+function allocateBytes(length: number, name: string): Uint8Array {
+  if (!Number.isSafeInteger(length) || length < 0) {
+    fail('limit', `Invalid ${name} allocation size`);
+  }
+  try {
+    return new Uint8Array(length);
+  } catch (error) {
+    if (error instanceof RangeError) fail('limit', `Cannot allocate ${name}`);
+    throw error;
+  }
+}
+
 function u32be(bytes: Uint8Array, pos: number): number {
   return (bytes[pos] * 0x1000000 + (bytes[pos + 1] << 16) + (bytes[pos + 2] << 8) + bytes[pos + 3]) >>> 0;
 }
@@ -135,10 +156,10 @@ export function decodePngRgba8(
   bytes: Uint8Array,
   limits?: Partial<PngPixelLimits>,
 ): { width: number; height: number; rgba: Uint8Array } {
-  const maxWidth = Math.floor(limits?.maxWidth ?? DEFAULT_MAX_WIDTH);
-  const maxHeight = Math.floor(limits?.maxHeight ?? DEFAULT_MAX_HEIGHT);
-  const maxPixels = Math.floor(limits?.maxPixels ?? DEFAULT_MAX_PIXELS);
-  const maxInputBytes = Math.floor(limits?.maxInputBytes ?? DEFAULT_MAX_INPUT_BYTES);
+  const maxWidth = normalizedLimit(limits?.maxWidth, DEFAULT_MAX_WIDTH, 'maxWidth');
+  const maxHeight = normalizedLimit(limits?.maxHeight, DEFAULT_MAX_HEIGHT, 'maxHeight');
+  const maxPixels = normalizedLimit(limits?.maxPixels, DEFAULT_MAX_PIXELS, 'maxPixels');
+  const maxInputBytes = normalizedLimit(limits?.maxInputBytes, DEFAULT_MAX_INPUT_BYTES, 'maxInputBytes');
   if (!(bytes instanceof Uint8Array)) fail('chunk', 'Expected bytes');
   if (bytes.length > maxInputBytes) fail('limit', 'Input past the limit');
   if (
@@ -260,7 +281,7 @@ export function decodePngRgba8(
   const trnsBytes = transparency as Uint8Array | null;
 
   if (idatParts.length === 0) fail('chunk', 'Missing IDAT');
-  const stream = new Uint8Array(idatLength);
+  const stream = allocateBytes(idatLength, 'IDAT');
   let streamPos = 0;
   for (const part of idatParts) {
     stream.set(part, streamPos);
@@ -284,7 +305,7 @@ export function decodePngRgba8(
   if (!Number.isSafeInteger(pixels)) fail('limit', 'Image past the limit');
   if (!Number.isSafeInteger(pixels * 4)) fail('limit', 'Image past the limit');
 
-  const out = new Uint8Array(expected);
+  const out = allocateBytes(expected, 'decompressed pixels');
   let outPos = 0;
   let bitPos = 16;
   const bitEnd = stream.length * 8;
@@ -467,7 +488,7 @@ export function decodePngRgba8(
     }
   }
 
-  const rgba = new Uint8Array(pixels * 4);
+  const rgba = allocateBytes(pixels * 4, 'RGBA pixels');
   let r = 0;
   if (colorType === 0) {
     for (let y = 0; y < height; y++) {
