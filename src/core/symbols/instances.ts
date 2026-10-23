@@ -247,6 +247,13 @@ export function buildInstances(symbols: readonly SymbolInput[], atlas: AtlasLook
       records[base + 14] = 1;
       records[base + 15] = 0;
     }
+    // Finite inputs can overflow during transform arithmetic or Float32 conversion.
+    // Validate each completed GPU record before returning any output to the caller.
+    for (let component = 0; component < 16; component += 1) {
+      if (!Number.isFinite(records[base + component])) {
+        return { ok: false, code: 'INPUT', message: `I5: non-finite instance record at ${i} component ${component}` };
+      }
+    }
   }
 
   return {
