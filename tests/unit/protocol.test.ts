@@ -30,14 +30,14 @@ describe('bounded UI protocol core', () => {
     const response = await get('/index.html'); expect(response.status).toBe(200); expect(await response.text()).toBe('<!doctype html>control'); expect(response.headers.get('content-length')).toBe('22'); await headersOn(response);
   });
   it('HEAD uses metadata, never reads the body', async () => {
-    const response = await get('/index.html', 'HEAD'); expect(response.status).toBe(200); expect(await response.text()).toBe(''); expect(fs.readFile).not.toHaveBeenCalled(); expect(response.headers.get('content-length')).toBe('22'); await headersOn(response);
+    const reads = spyNextOpenReads(); const response = await get('/index.html', 'HEAD'); expect(response.status).toBe(200); expect(await response.text()).toBe(''); expect(reads()).toBe(0); expect(response.headers.get('content-length')).toBe('22'); await headersOn(response);
   });
   it.each(['.js', '.css', '.json', '.png', '.woff2'])('sends the identical CSP for %s', async ext => { const response = await get('/a' + ext); expect(response.status).toBe(200); await headersOn(response); });
   it('ignores Range deliberately and serves the full representation', async () => { const r = await get('/index.html', 'GET', {Range: 'bytes=0-3'}); expect(r.status).toBe(200); expect(await r.text()).toBe('<!doctype html>control'); await headersOn(r); });
   it.each([['/index.html', 'POST', 405], ['/missing', 'GET', 404], ['/escape', 'GET', 403], ['/sibling', 'GET', 403], ['/large.png', 'GET', 413]] as const)('returns a path-free error for %s %s', async (url, method, status) => {
     const r = await get(url, method); expect(r.status).toBe(status); expect(await r.text()).toBe(''); await headersOn(r); if (status === 405) expect(r.headers.get('allow')).toBe('GET, HEAD');
   });
-  it('caps UI files at 16 MiB before any body read', async () => { expect(MAX_UI_ASSET_BYTES).toBe(16 * 1024 * 1024); expect((await get('/large.png')).status).toBe(413); expect(fs.readFile).not.toHaveBeenCalled(); });
+  it('caps UI files at 16 MiB before any body read', async () => { expect(MAX_UI_ASSET_BYTES).toBe(16 * 1024 * 1024); const reads = spyNextOpenReads(); expect((await get('/large.png')).status).toBe(413); expect(reads()).toBe(0); });
   it('omits content-length when the body read fails after a successful stat (EIO reads as 500)', async () => {
     const openMock = vi.mocked(fs.open) as unknown as {
       getMockImplementation(): (...args: never[]) => Promise<FileHandle>;
@@ -126,11 +126,11 @@ describe('bounded UI protocol core', () => {
     for (const [url, body] of [['/caf%C3%A9.txt', 'composed'], ['/cafe%CC%81.txt', 'decomposed']]) expect(await (await get(url!)).text()).toBe(body);
     expect((await get('/INDEX.HTML')).status).toBe(404); expect((await get('/index.html.')).status).toBe(404); expect((await get('/index.html/')).status).toBe(200);
   });
-  it.each(['/' + 'x'.repeat(4100), '/' + Array(6).fill('a'.repeat(200)).join('/'), '/' + 'é'.repeat(128)])('bounds raw URL, decoded path or UTF-8 segment length before filesystem work', async url => { const r = await get(url); expect(r.status).toBe(414); expect(await r.text()).toBe(''); expect(fs.realpath).not.toHaveBeenCalled(); expect(fs.stat).not.toHaveBeenCalled(); expect(fs.readFile).not.toHaveBeenCalled(); await headersOn(r); });
+  it.each(['/' + 'x'.repeat(4100), '/' + Array(6).fill('a'.repeat(200)).join('/'), '/' + 'é'.repeat(128)])('bounds raw URL, decoded path or UTF-8 segment length before filesystem work', async url => { const r = await get(url); expect(r.status).toBe(414); expect(await r.text()).toBe(''); expect(fs.realpath).not.toHaveBeenCalled(); expect(fs.open).not.toHaveBeenCalled(); await headersOn(r); });
   it('bounds the raw URL on its own: a long query on a short path is 414 before any filesystem work', async () => {
     const r = await get('/index.html?' + 'q'.repeat(4100));
     expect(r.status).toBe(414); expect(await r.text()).toBe('');
-    expect(fs.realpath).not.toHaveBeenCalled(); expect(fs.stat).not.toHaveBeenCalled(); expect(fs.readFile).not.toHaveBeenCalled();
+    expect(fs.realpath).not.toHaveBeenCalled(); expect(fs.open).not.toHaveBeenCalled();
     expect((await get('/index.html?' + 'q'.repeat(100))).status).toBe(200);
   });
   it.each(['http://app/index.html', 'georama://app.evil/index.html', 'georama://app@other/index.html', 'georama://user@app/index.html', 'georama://app:80/index.html'])('rejects handler authority %s', async url => { const r = await handleAppRequest({url, method: 'GET'}, root); expect(r.status).toBe(404); await headersOn(r); });
