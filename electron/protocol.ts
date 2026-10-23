@@ -1,4 +1,5 @@
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { open, realpath, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import { app, protocol } from 'electron';
 import { BRAND } from '../src/shared/brand.ts';
@@ -30,9 +31,54 @@ export function registerAppScheme(): void {
 
 // UI resources only; large assets get a separate bounded reader.
 export const MAX_UI_ASSET_BYTES = 16 * 1024 * 1024;
+// Aggregate admission budget: at most four maximum-size assets may be read concurrently.
+export const MAX_IN_FLIGHT_BYTES = 64 * 1024 * 1024;
+// Aggregate admission budget: at most this many asset reads may be in flight at once.
+export const MAX_IN_FLIGHT_READS = 16;
+/** Limits accepted by createReadBudget; each defaults to the matching MAX_IN_FLIGHT_* constant. */
+export interface ReadBudgetLimits { maxBytes?: number; maxReads?: number }
+/** A concurrency budget for asset reads: tryReserve admits a read, release returns it. */
+export interface ReadBudget { tryReserve(size: number): boolean; release(size: number): void }
+/** Creates an isolated admission budget (tests use small limits to exercise refusal without large files). */
+export function createReadBudget(limits: ReadBudgetLimits = {}): ReadBudget {
+  const maxBytes = limits.maxBytes ?? MAX_IN_FLIGHT_BYTES;
+  const maxReads = limits.maxReads ?? MAX_IN_FLIGHT_READS;
+  let inFlightBytes = 0, inFlightReads = 0;
+  return {
+    tryReserve(size: number): boolean {
+      if (inFlightReads + 1 > maxReads || inFlightBytes + size > maxBytes) return false;
+      inFlightReads += 1; inFlightBytes += size; return true;
+    },
+    release(size: number): void {
+      inFlightReads = Math.max(0, inFlightReads - 1);
+      inFlightBytes = Math.max(0, inFlightBytes - size);
+    },
+  };
+}
+/** Module-level admission budget built from the MAX_IN_FLIGHT_* constants. */
+export const defaultReadBudget: ReadBudget = createReadBudget();
+/** Reads at most cap+1 bytes from an open descriptor; returns null when the content exceeds cap. */
+export async function readBoundedBytes(handle: FileHandle, cap: number = MAX_UI_ASSET_BYTES): Promise<Buffer | null> {
+  const buf = Buffer.allocUnsafe(cap + 1);
+  let total = 0;
+  for (;;) {
+    const remaining = cap + 1 - total;
+    if (remaining <= 0) return null;
+    const {bytesRead} = await handle.read(buf, total, remaining, null);
+    // Clamp: a faulty handle must not report more than was requested.
+    total += Math.min(Math.max(bytesRead, 0), remaining);
+    if (total > cap) return null;
+    if (bytesRead === 0) return buf.subarray(0, total);
+  }
+}
+
+// Undefined on some platforms (Windows); 0 keeps the open flags valid there.
+const O_RDONLY = constants.O_RDONLY ?? 0;
+const O_NONBLOCK = constants.O_NONBLOCK ?? 0;
+const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 
 /** Electron-independent request core; rendererRoot is injectable for disposable tests. */
-export async function handleAppRequest(request: {url: string; method: string; headers?: Headers}, rendererRoot: string): Promise<Response> {
+export async function handleAppRequest(request: {url: string; method: string; headers?: Headers}, rendererRoot: string, budget: ReadBudget = defaultReadBudget): Promise<Response> {
   const headers: Record<string, string> = {
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',
@@ -55,21 +101,36 @@ export async function handleAppRequest(request: {url: string; method: string; he
   try {
     const [realRoot, realFile] = await Promise.all([realpath(rendererRoot), realpath(filename)]);
     if (realFile !== realRoot && !realFile.startsWith(realRoot + path.sep)) return errorResponse(403);
-    const metadata = await stat(realFile);
-    if (!metadata.isFile()) return errorResponse(404);
-    if (metadata.size > MAX_UI_ASSET_BYTES) return errorResponse(413);
-    headers['Content-Length'] = String(metadata.size);
-    headers['Content-Type'] = contentTypes[path.extname(realFile).toLowerCase()] ?? 'application/octet-stream';
-    // Range is intentionally ignored: return 200 and the full bounded representation.
-    if (request.method === 'HEAD') return new Response(null, {status: 200, headers});
-    const bytes = await readFile(realFile);
-    if (bytes.byteLength > MAX_UI_ASSET_BYTES) { delete headers['Content-Length']; return errorResponse(413); }
-    headers['Content-Length'] = String(bytes.byteLength);
-    // Buffer is already a Uint8Array; the assertion changes no bytes and makes no copy.
-    return new Response(bytes as Uint8Array<ArrayBuffer>, {status: 200, headers});
+    // Defence in depth: the realpath containment check above stays, but metadata and bytes
+    // below come from one open descriptor, so a swap after the check cannot redirect them.
+    // O_NONBLOCK keeps the open itself from blocking on a FIFO; O_NOFOLLOW refuses a
+    // final-component symlink planted after the check.
+    const handle = await open(realFile, O_RDONLY | O_NONBLOCK | O_NOFOLLOW);
+    try {
+      const metadata = await handle.stat();
+      if (!metadata.isFile()) return errorResponse(404);
+      if (metadata.size > MAX_UI_ASSET_BYTES) return errorResponse(413);
+      headers['Content-Length'] = String(metadata.size);
+      headers['Content-Type'] = contentTypes[path.extname(realFile).toLowerCase()] ?? 'application/octet-stream';
+      // Range is intentionally ignored: return 200 and the full bounded representation.
+      if (request.method === 'HEAD') return new Response(null, {status: 200, headers});
+      if (!budget.tryReserve(metadata.size)) { delete headers['Content-Length']; return errorResponse(503); }
+      try {
+        const bytes = await readBoundedBytes(handle);
+        // Growth after open: content past the cap is refused without ever reading past cap+1.
+        if (bytes === null) { delete headers['Content-Length']; return errorResponse(413); }
+        headers['Content-Length'] = String(bytes.byteLength);
+        // Buffer is already a Uint8Array; the assertion changes no bytes and makes no copy.
+        return new Response(bytes as Uint8Array<ArrayBuffer>, {status: 200, headers});
+      } finally {
+        budget.release(metadata.size);
+      }
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    const status = code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR' ? 404 : code === 'EACCES' ? 403 : 500;
+    const status = code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR' || code === 'ELOOP' ? 404 : code === 'EACCES' ? 403 : 500;
     delete headers['Content-Length'];
     return errorResponse(status);
   }
