@@ -82,17 +82,19 @@ const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 
 /** Electron-independent request core; rendererRoot is injectable for disposable tests. */
 export async function handleAppRequest(request: {url: string; method: string; headers?: Headers}, rendererRoot: string, budget: ReadBudget = defaultReadBudget): Promise<Response> {
-  const headers: Record<string, string> = {
+  const baseHeaders: Record<string, string> = {
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',
     'Content-Security-Policy': buildCsp(),
     'Accept-Ranges': 'none',
   };
-  const errorResponse = (status: number): Response => new Response(null, {status, headers});
+  // Asset headers go on a copy. Error responses are built from baseHeaders plus the extra headers their branch names
+  // (Allow on 405), so no refusal after the stat can carry the asset's Content-Type or a Content-Length.
+  const headers: Record<string, string> = {...baseHeaders};
+  const errorResponse = (status: number, extra: Record<string, string> = {}): Response => new Response(null, {status, headers: {...baseHeaders, ...extra}});
   if (request.url.length > 4096) return errorResponse(414);
   if (request.method !== 'GET' && request.method !== 'HEAD') {
-    headers['Allow'] = 'GET, HEAD';
-    return errorResponse(405);
+    return errorResponse(405, {Allow: 'GET, HEAD'});
   }
   if (!isTrustedAppUrl(request.url)) return errorResponse(404);
   const url = new URL(request.url);
@@ -117,12 +119,12 @@ export async function handleAppRequest(request: {url: string; method: string; he
       headers['Content-Type'] = contentTypes[path.extname(realFile).toLowerCase()] ?? 'application/octet-stream';
       // Range is intentionally ignored: return 200 and the full bounded representation.
       if (request.method === 'HEAD') return new Response(null, {status: 200, headers});
-      if (!budget.tryReserve(metadata.size)) { delete headers['Content-Length']; return errorResponse(503); }
+      if (!budget.tryReserve(metadata.size)) return errorResponse(503);
       try {
         const bytes = await readBoundedBytes(handle, metadata.size);
         // Growth after fstat: content beyond the reserved size is refused (fail closed). Requests never
         // exceed the reservation plus one byte, so the admission budget also bounds memory.
-        if (bytes === null) { delete headers['Content-Length']; return errorResponse(413); }
+        if (bytes === null) return errorResponse(413);
         headers['Content-Length'] = String(bytes.byteLength);
         // Buffer is already a Uint8Array; the assertion changes no bytes and makes no copy.
         return new Response(bytes as Uint8Array<ArrayBuffer>, {status: 200, headers});
@@ -135,7 +137,6 @@ export async function handleAppRequest(request: {url: string; method: string; he
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     const status = code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR' || code === 'ELOOP' ? 404 : code === 'EACCES' ? 403 : 500;
-    delete headers['Content-Length'];
     return errorResponse(status);
   }
 }

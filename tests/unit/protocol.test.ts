@@ -51,7 +51,7 @@ describe('bounded UI protocol core', () => {
     });
     const r = await get('/index.html');
     expect(r.status).toBe(500); expect(await r.text()).toBe('');
-    expect(r.headers.has('content-length')).toBe(false); await headersOn(r);
+    expect(r.headers.has('content-length')).toBe(false); await headersOn(r); expect(r.headers.has('content-type')).toBe(false);
   });
   it('omits content-length when the body read fails after a successful stat (EACCES reads as 403)', async () => {
     const openMock = vi.mocked(fs.open) as unknown as {
@@ -66,7 +66,7 @@ describe('bounded UI protocol core', () => {
     });
     const r = await get('/index.html');
     expect(r.status).toBe(403); expect(await r.text()).toBe('');
-    expect(r.headers.has('content-length')).toBe(false); await headersOn(r);
+    expect(r.headers.has('content-length')).toBe(false); await headersOn(r); expect(r.headers.has('content-type')).toBe(false);
   });
   it('carries content-length equal to the byte length on a successful GET', async () => {
     const r = await get('/a.png');
@@ -161,7 +161,7 @@ describe('admission budget (issue #5 A)', () => {
     const budget = createReadBudget({maxBytes: 1, maxReads: 16});
     const reads = spyNextOpenReads();
     const r = await getWithBudget('/index.html', budget);
-    expect(r.status).toBe(503); expect(await r.text()).toBe(''); await headersOn(r);
+    expect(r.status).toBe(503); expect(await r.text()).toBe(''); await headersOn(r); expect(r.headers.has('content-type')).toBe(false);
     expect(reads()).toBe(0);
   });
   it('admits a later request after an earlier one completes (reservation is released)', async () => {
@@ -195,7 +195,7 @@ describe('descriptor-bound bounded reads (issue #5 C)', () => {
   it('refuses a real file larger than the cap when opened without reading past the bound', async () => {
     const reads = spyNextOpenReads();
     const r = await get('/large.png');
-    expect(r.status).toBe(413); expect(await r.text()).toBe(''); await headersOn(r);
+    expect(r.status).toBe(413); expect(await r.text()).toBe(''); await headersOn(r); expect(r.headers.has('content-type')).toBe(false);
     expect(vi.mocked(fs.open)).toHaveBeenCalled(); expect(reads()).toBe(0);
   });
   it('HEAD opens for metadata but never reads the body', async () => {
@@ -223,7 +223,7 @@ describe('descriptor-bound bounded reads (issue #5 C)', () => {
       return handle;
     });
     const r = await get('/index.html');
-    expect(r.status).toBe(413); expect(await r.text()).toBe(''); await headersOn(r);
+    expect(r.status).toBe(413); expect(await r.text()).toBe(''); await headersOn(r); expect(r.headers.has('content-type')).toBe(false);
     expect(requested).toBeLessThanOrEqual(9);
   });
 });
