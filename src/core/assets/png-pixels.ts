@@ -57,7 +57,20 @@ function fail(code: PngPixelErrorCode, message: string): never {
   throw new PngPixelError(code, message);
 }
 
+// A cap is a number. Undefined takes the default. NaN and non-number values
+// (a string, a boolean, null) are typed limit errors, before the input is read.
+// Negative caps keep their fail-closed path (main pins its message), and
+// +Infinity is the documented "no explicit cap".
+function limitCap(value: unknown, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    fail('limit', 'Invalid limit value');
+  }
+  return Math.floor(value);
+}
+
 function allocBytes(n: number): Uint8Array {
+  if (!Number.isSafeInteger(n) || n < 0) fail('limit', 'Invalid allocation size');
   try {
     return new Uint8Array(n);
   } catch (error) {
@@ -144,13 +157,12 @@ export function decodePngRgba8(
   bytes: Uint8Array,
   limits?: Partial<PngPixelLimits>,
 ): { width: number; height: number; rgba: Uint8Array } {
-  const maxWidth = Math.floor(limits?.maxWidth ?? DEFAULT_MAX_WIDTH);
-  const maxHeight = Math.floor(limits?.maxHeight ?? DEFAULT_MAX_HEIGHT);
-  const maxPixels = Math.floor(limits?.maxPixels ?? DEFAULT_MAX_PIXELS);
-  const maxInputBytes = Math.floor(limits?.maxInputBytes ?? DEFAULT_MAX_INPUT_BYTES);
-  if (Number.isNaN(maxWidth) || Number.isNaN(maxHeight) || Number.isNaN(maxPixels) || Number.isNaN(maxInputBytes)) {
-    fail('limit', 'Invalid limit value');
-  }
+  const maxWidth = limitCap(limits?.maxWidth, DEFAULT_MAX_WIDTH);
+  const maxHeight = limitCap(limits?.maxHeight, DEFAULT_MAX_HEIGHT);
+  const maxPixels = limitCap(limits?.maxPixels, DEFAULT_MAX_PIXELS);
+  const maxInputBytes = limitCap(limits?.maxInputBytes, DEFAULT_MAX_INPUT_BYTES);
+  // A negative width, height or pixel cap admits no image: reject before the input is read.
+  if (maxWidth < 0 || maxHeight < 0 || maxPixels < 0) fail('limit', 'Image past the limit');
   if (!(bytes instanceof Uint8Array)) fail('chunk', 'Expected bytes');
   if (bytes.length > maxInputBytes) fail('limit', 'Input past the limit');
   if (
@@ -272,7 +284,7 @@ export function decodePngRgba8(
   const trnsBytes = transparency as Uint8Array | null;
 
   if (idatParts.length === 0) fail('chunk', 'Missing IDAT');
-  const stream = new Uint8Array(idatLength);
+  const stream = allocBytes(idatLength);
   let streamPos = 0;
   for (const part of idatParts) {
     stream.set(part, streamPos);

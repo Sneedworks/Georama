@@ -1,7 +1,7 @@
 import { crc32 as nodeCrc32, deflateSync, inflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { decodePngRgba8, PngPixelError } from '../../src/core/assets/png-pixels.ts';
-import type { PngPixelErrorCode } from '../../src/core/assets/png-pixels.ts';
+import type { PngPixelErrorCode, PngPixelLimits } from '../../src/core/assets/png-pixels.ts';
 
 function channelsOf(colorType: number): number {
   if (colorType === 0 || colorType === 3) return 1;
@@ -650,6 +650,48 @@ describe('png pixel decoder pins', () => {
     expect(decodePngRgba8(gray1, { maxPixels: 1 }).rgba.length).toBe(4);
     const tall = testPng({ width: 1, height: 2, colorType: 0, raw: rawNone(1, 2, 0, [1, 2]) });
     expect(codeOf(() => decodePngRgba8(tall, { maxPixels: 1 }))).toBe('limit');
+  });
+
+  it('rejects invalid numeric limits before interpreting PNG contents', () => {
+    const keys: Array<keyof PngPixelLimits> = ['maxWidth', 'maxHeight', 'maxPixels', 'maxInputBytes'];
+    // +Infinity is not invalid: it is the documented "no explicit cap" (see the test below).
+    const invalidValues: unknown[] = [NaN, -Infinity, -1, -0.5, null, '8', true];
+    for (const key of keys) {
+      for (const value of invalidValues) {
+        const limits = { [key]: value } as unknown as Partial<PngPixelLimits>;
+        expect(codeOf(() => decodePngRgba8(gray1, limits)), `${key}=${String(value)}`).toBe('limit');
+        expect(codeOf(() => decodePngRgba8(SIGNATURE, limits)), `${key}=${String(value)} before header`).toBe('limit');
+      }
+    }
+  });
+
+  it('preserves zero caps and flooring of finite fractional caps', () => {
+    const keys: Array<keyof PngPixelLimits> = ['maxWidth', 'maxHeight', 'maxPixels', 'maxInputBytes'];
+    for (const key of keys) {
+      expect(codeOf(() => decodePngRgba8(gray1, { [key]: 0 }))).toBe('limit');
+    }
+    const wide = testPng({ width: 2, height: 1, colorType: 0, raw: rawNone(2, 1, 0, [3, 4]) });
+    expect(decodePngRgba8(gray1, { maxWidth: 1.9 }).rgba.length).toBe(4);
+    expect(codeOf(() => decodePngRgba8(wide, { maxWidth: 1.9 }))).toBe('limit');
+    expect(decodePngRgba8(gray1, { maxHeight: 1.9 }).rgba.length).toBe(4);
+    expect(codeOf(() => decodePngRgba8(gray5, { maxHeight: 4.9 }))).toBe('limit');
+    expect(decodePngRgba8(gray1, { maxPixels: 1.9 }).rgba.length).toBe(4);
+    expect(codeOf(() => decodePngRgba8(wide, { maxPixels: 1.9 }))).toBe('limit');
+    expect(decodePngRgba8(gray1, { maxInputBytes: gray1.length + 0.9 }).rgba.length).toBe(4);
+    expect(codeOf(() => decodePngRgba8(gray1, { maxInputBytes: gray1.length - 0.1 }))).toBe('limit');
+  });
+
+  it('reports unallocatable decompression buffers as a typed limit error', () => {
+    // The file is tiny: only its synthetic IHDR dimensions are enormous.
+    // 2**50 scanline bytes exceed the supported test runtime's Uint8Array limit.
+    const width = 2 ** 30;
+    const height = 2 ** 20;
+    const huge = testPng({ width, height, colorType: 0, raw: new Uint8Array(0) });
+    expect(codeOf(() => decodePngRgba8(huge, {
+      maxWidth: width,
+      maxHeight: height,
+      maxPixels: width * height,
+    }))).toBe('limit');
   });
 
   it('rejects a width of 2147483647 with the limit error', () => {
