@@ -1,6 +1,6 @@
 # Development
 
-Requires Node ^22.18, ^24 or >=26 (native TypeScript execution is on by default from 22.18) and npm. Install the exact locked dependencies with `npm ci`.
+Gates run on Node 22: `.nvmrc` pins the version, and `typecheck`, `test`, `build`, `e2e`, `e2e:gl`, `e2e:compose` and `corpus` refuse any other major (`scripts/require-node-22.mjs`, run as a `pre` script). The `engines` range in `package.json` (^22.18, ^24, >=26) is the runtime range of the application, not the gate range. Native TypeScript execution is on by default from 22.18, and npm is required. Install the exact locked dependencies with `npm ci`.
 
 - `npm run typecheck` — sequential strict checks of `tsconfig.core.json` (ES2022, no environment types), `tsconfig.renderer.json` (DOM, no Node types) and `tsconfig.node.json` (Node, no DOM) via `tsc -p`; any failed project fails the command.
 - `npm test` — Node-environment Vitest unit tests, including compiler ambient-global/closed-world gates, esbuild runtime-import gates and text rules for the portable core, with positive and negative fixtures.
