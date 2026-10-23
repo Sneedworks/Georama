@@ -221,4 +221,18 @@ describe.skipIf(process.platform === 'win32')('non-regular files (issue #5 B sta
       await fs.rm(fifoRoot, {recursive: true, force: true});
     }
   }, 3000);
+  it('refuses an in-root symlink to a FIFO quickly instead of blocking', async () => {
+    const fifoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'georama-protocol-fifo-'));
+    try {
+      const fifo = path.join(fifoRoot, 'real');
+      execFileSync('mkfifo', [fifo]);
+      await fs.symlink(fifo, path.join(fifoRoot, 'link'));
+      vi.mocked(fs.stat).mockResolvedValueOnce({isFile: () => true, size: 8} as never);
+      const r = await handleAppRequest({url: 'georama://app/link', method: 'GET', headers: new Headers({})}, fifoRoot);
+      expect(r.status).toBe(404); expect(await r.text()).toBe('');
+      expect(r.headers.get('content-security-policy')).toBe(buildCsp()); expect(r.headers.get('x-content-type-options')).toBe('nosniff'); expect(r.headers.get('cache-control')).toBe('no-store');
+    } finally {
+      await fs.rm(fifoRoot, {recursive: true, force: true});
+    }
+  }, 3000);
 });
