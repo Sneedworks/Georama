@@ -6,8 +6,8 @@ import { classifySymbolTexture } from '../../src/core/symbols/texture-class.ts';
 
 // T1: invented references that resolveRef accepts. Keys must equal assetKey(resolveRef()).
 const validTexts: string[] = [
-  'res://sprites/grove_alpha/oak_01',
-  'res://sprites/grove_alpha/pine 02',
+  'res://sprites/synthetic/tex_02',
+  'res://sprites/synthetic/tex_03 02',
   'res://packs/ember_test/sprites/symbols/hall_set/stall 1',
   'user://assets/ember_test/sprites/trees/Pine-A/Pine-A-07',
   'user://assets/north_pack/symbols/harbor_set/dock 03',
@@ -94,7 +94,7 @@ describe('T3 wrong-type table (T3)', () => {
       Symbol('s'),
       callable,
       [],
-      ['res://sprites/grove_alpha/oak_01'],
+      ['res://sprites/synthetic/tex_02'],
     ];
     for (const v of values) {
       expect(classifySymbolTexture(v)).toEqual({ class: 'invalid', code: 'TYPE' });
