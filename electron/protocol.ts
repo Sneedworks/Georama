@@ -59,18 +59,27 @@ export function createReadBudget(limits: ReadBudgetLimits = {}): ReadBudget {
 export const defaultReadBudget: ReadBudget = createReadBudget();
 /** Reads at most cap+1 bytes from an open descriptor; returns null when the content exceeds cap. */
 export async function readBoundedBytes(handle: FileHandle, cap: number = MAX_UI_ASSET_BYTES): Promise<Buffer | null> {
-  const buf = Buffer.allocUnsafe(cap + 1);
+  const chunks: Buffer[] = [];
   let total = 0;
   for (;;) {
     const remaining = cap + 1 - total;
     if (remaining <= 0) return null;
-    const {bytesRead} = await handle.read(buf, total, remaining, null);
+    // Small fixed-size chunks: transient memory stays near one chunk however large the
+    // cap is, and the total ever requested from the descriptor never exceeds cap+1.
+    const buf = Buffer.allocUnsafe(Math.min(READ_CHUNK_BYTES, remaining));
+    const {bytesRead} = await handle.read(buf, 0, buf.length, null);
+    if (bytesRead === 0) break;
     // Clamp: a faulty handle must not report more than was requested.
-    total += Math.min(Math.max(bytesRead, 0), remaining);
+    const n = Math.min(Math.max(bytesRead, 0), buf.length);
+    chunks.push(n === buf.length ? buf : buf.subarray(0, n));
+    total += n;
     if (total > cap) return null;
-    if (bytesRead === 0) return buf.subarray(0, total);
   }
+  return Buffer.concat(chunks, total);
 }
+
+// One chunk per in-flight read bounds transient memory well below the aggregate budget.
+const READ_CHUNK_BYTES = 64 * 1024;
 
 // Undefined on some platforms (Windows); 0 keeps the open flags valid there.
 const O_RDONLY = constants.O_RDONLY ?? 0;

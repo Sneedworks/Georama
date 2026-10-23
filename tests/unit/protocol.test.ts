@@ -173,10 +173,16 @@ describe('admission budget (issue #5 A)', () => {
 
 describe('descriptor-bound bounded reads (issue #5 C)', () => {
   it('stops at cap+1 and refuses when a handle reports more bytes than requested', async () => {
-    let calls = 0;
-    const evil = {read: async (buf: Buffer, offset: number, length: number) => { calls += 1; buf.fill(0x61, offset, offset + length); return {bytesRead: length + 1000}; }};
+    let calls = 0, requested = 0;
+    const evil = {read: async (buf: Buffer, offset: number, length: number) => { calls += 1; requested += length; buf.fill(0x61, offset, offset + length); return {bytesRead: length + 1000}; }};
     expect(await readBoundedBytes(evil as never, 10)).toBeNull();
-    expect(calls).toBe(1);
+    expect(calls).toBe(1); expect(requested).toBeLessThanOrEqual(11);
+  });
+  it('never requests more than cap+1 bytes in total from an endless handle', async () => {
+    let calls = 0, requested = 0;
+    const endless = {read: async (buf: Buffer, _offset: number, length: number) => { calls += 1; requested += length; buf.fill(0x62, 0, length); return {bytesRead: length}; }};
+    expect(await readBoundedBytes(endless as never, 200000)).toBeNull();
+    expect(requested).toBeLessThanOrEqual(200001); expect(calls).toBeLessThanOrEqual(5);
   });
   it('returns exact bytes for a well-behaved handle', async () => {
     const chunks = [Buffer.from('hello '), Buffer.from('world')]; let i = 0;
