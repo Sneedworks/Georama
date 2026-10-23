@@ -172,13 +172,13 @@ describe('admission budget (issue #5 A)', () => {
 });
 
 describe('descriptor-bound bounded reads (issue #5 C)', () => {
-  it('stops at cap+1 and refuses when a handle reports more bytes than requested', async () => {
+  it('stops at the reservation plus one byte when a handle reports more bytes than requested', async () => {
     let calls = 0, requested = 0;
     const evil = {read: async (buf: Buffer, offset: number, length: number) => { calls += 1; requested += length; buf.fill(0x61, offset, offset + length); return {bytesRead: length + 1000}; }};
     expect(await readBoundedBytes(evil as never, 10)).toBeNull();
     expect(calls).toBe(1); expect(requested).toBeLessThanOrEqual(11);
   });
-  it('never requests more than cap+1 bytes in total from an endless handle', async () => {
+  it('never requests more than the reservation plus one byte from an endless handle', async () => {
     let calls = 0, requested = 0;
     const endless = {read: async (buf: Buffer, _offset: number, length: number) => { calls += 1; requested += length; buf.fill(0x62, 0, length); return {bytesRead: length}; }};
     expect(await readBoundedBytes(endless as never, 200000)).toBeNull();
@@ -204,6 +204,28 @@ describe('descriptor-bound bounded reads (issue #5 C)', () => {
     expect(r.status).toBe(200); expect(await r.text()).toBe(''); expect(r.headers.get('content-length')).toBe('22'); await headersOn(r);
     expect(reads()).toBe(0);
   });
+  it('refuses content that grows past the reserved size instead of reading up to the cap', async () => {
+    // fstat reports 8 bytes (the reservation); the descriptor actually holds the 22-byte index file.
+    const openMock = vi.mocked(fs.open) as unknown as {
+      getMockImplementation(): (...args: never[]) => Promise<FileHandle>;
+      mockImplementationOnce(impl: (...args: never[]) => Promise<FileHandle>): void;
+    };
+    const through = openMock.getMockImplementation();
+    let requested = 0;
+    openMock.mockImplementationOnce(async (...args: never[]) => {
+      const handle = await through(...args);
+      const realRead = handle.read.bind(handle) as unknown as (...a: unknown[]) => Promise<unknown>;
+      vi.spyOn(handle, 'stat').mockResolvedValueOnce({isFile: () => true, size: 8} as never);
+      vi.spyOn(handle, 'read').mockImplementation(((buf: Buffer, offset: number, length: number, position: number | null) => {
+        requested += length;
+        return realRead(buf, offset, length, position);
+      }) as never);
+      return handle;
+    });
+    const r = await get('/index.html');
+    expect(r.status).toBe(413); expect(await r.text()).toBe(''); await headersOn(r);
+    expect(requested).toBeLessThanOrEqual(9);
+  });
 });
 
 describe.skipIf(process.platform === 'win32')('non-regular files (issue #5 B stall part)', () => {
@@ -212,8 +234,7 @@ describe.skipIf(process.platform === 'win32')('non-regular files (issue #5 B sta
     try {
       const fifo = path.join(fifoRoot, 'swap');
       execFileSync('mkfifo', [fifo]);
-      // Simulate the stat/open window: stat once saw a regular file, but the descriptor is a FIFO.
-      vi.mocked(fs.stat).mockResolvedValueOnce({isFile: () => true, size: 8} as never);
+      // open(O_NONBLOCK) returns at once on a FIFO; the descriptor's own fstat refuses it.
       const r = await handleAppRequest({url: 'georama://app/swap', method: 'GET', headers: new Headers({})}, fifoRoot);
       expect(r.status).toBe(404); expect(await r.text()).toBe('');
       expect(r.headers.get('content-security-policy')).toBe(buildCsp()); expect(r.headers.get('x-content-type-options')).toBe('nosniff'); expect(r.headers.get('cache-control')).toBe('no-store');
@@ -227,7 +248,6 @@ describe.skipIf(process.platform === 'win32')('non-regular files (issue #5 B sta
       const fifo = path.join(fifoRoot, 'real');
       execFileSync('mkfifo', [fifo]);
       await fs.symlink(fifo, path.join(fifoRoot, 'link'));
-      vi.mocked(fs.stat).mockResolvedValueOnce({isFile: () => true, size: 8} as never);
       const r = await handleAppRequest({url: 'georama://app/link', method: 'GET', headers: new Headers({})}, fifoRoot);
       expect(r.status).toBe(404); expect(await r.text()).toBe('');
       expect(r.headers.get('content-security-policy')).toBe(buildCsp()); expect(r.headers.get('x-content-type-options')).toBe('nosniff'); expect(r.headers.get('cache-control')).toBe('no-store');

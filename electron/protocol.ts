@@ -57,29 +57,23 @@ export function createReadBudget(limits: ReadBudgetLimits = {}): ReadBudget {
 }
 /** Module-level admission budget built from the MAX_IN_FLIGHT_* constants. */
 export const defaultReadBudget: ReadBudget = createReadBudget();
-/** Reads at most cap+1 bytes from an open descriptor; returns null when the content exceeds cap. */
-export async function readBoundedBytes(handle: FileHandle, cap: number = MAX_UI_ASSET_BYTES): Promise<Buffer | null> {
-  const chunks: Buffer[] = [];
+/** Reads an open descriptor into one buffer sized from its own fstat (the reservation) plus one byte.
+ *  Requests never exceed reservedSize + 1 (and cap + 1), so memory matches the admission reservation.
+ *  Returns null when the content grew past the reservation, or past cap (fail closed). */
+export async function readBoundedBytes(handle: FileHandle, reservedSize: number, cap: number = MAX_UI_ASSET_BYTES): Promise<Buffer | null> {
+  const capacity = Math.min(Math.max(reservedSize, 0), cap) + 1;
+  const buf = Buffer.allocUnsafe(capacity);
   let total = 0;
   for (;;) {
-    const remaining = cap + 1 - total;
-    if (remaining <= 0) return null;
-    // Small fixed-size chunks: transient memory stays near one chunk however large the
-    // cap is, and the total ever requested from the descriptor never exceeds cap+1.
-    const buf = Buffer.allocUnsafe(Math.min(READ_CHUNK_BYTES, remaining));
-    const {bytesRead} = await handle.read(buf, 0, buf.length, null);
-    if (bytesRead === 0) break;
+    // The spare byte is filled only when the file grew past its reservation: refuse without reading further.
+    if (total === capacity) return null;
+    const {bytesRead} = await handle.read(buf, total, capacity - total, null);
+    if (bytesRead <= 0) break;
     // Clamp: a faulty handle must not report more than was requested.
-    const n = Math.min(Math.max(bytesRead, 0), buf.length);
-    chunks.push(n === buf.length ? buf : buf.subarray(0, n));
-    total += n;
-    if (total > cap) return null;
+    total += Math.min(bytesRead, capacity - total);
   }
-  return Buffer.concat(chunks, total);
+  return buf.subarray(0, total);
 }
-
-// One chunk per in-flight read bounds transient memory well below the aggregate budget.
-const READ_CHUNK_BYTES = 64 * 1024;
 
 // Undefined on some platforms (Windows); 0 keeps the open flags valid there.
 const O_RDONLY = constants.O_RDONLY ?? 0;
@@ -125,8 +119,9 @@ export async function handleAppRequest(request: {url: string; method: string; he
       if (request.method === 'HEAD') return new Response(null, {status: 200, headers});
       if (!budget.tryReserve(metadata.size)) { delete headers['Content-Length']; return errorResponse(503); }
       try {
-        const bytes = await readBoundedBytes(handle);
-        // Growth after open: content past the cap is refused without ever reading past cap+1.
+        const bytes = await readBoundedBytes(handle, metadata.size);
+        // Growth after fstat: content beyond the reserved size is refused (fail closed). Requests never
+        // exceed the reservation plus one byte, so the admission budget also bounds memory.
         if (bytes === null) { delete headers['Content-Length']; return errorResponse(413); }
         headers['Content-Length'] = String(bytes.byteLength);
         // Buffer is already a Uint8Array; the assertion changes no bytes and makes no copy.
