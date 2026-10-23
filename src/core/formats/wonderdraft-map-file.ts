@@ -3,7 +3,7 @@
 // decodes the Variant payload into the typed model. writeWdMap reverses the trip
 // with the default GCPF block size. validateWdMap is a pure issue list over the
 // invariants V1..V8 named below; it never throws.
-import { decodeGcpf, encodeGcpf } from './gcpf.ts';
+import { decodeGcpf, encodeGcpf, readGcpfHeader } from './gcpf.ts';
 import { decodeStoreVar, encodeStoreVar } from './godot-var.ts';
 import { WD_LIMITS, WdSchemaError, wdMapFromGd, wdMapToGd } from './wonderdraft-map.ts';
 import type { WdMap } from './wonderdraft-map.ts';
@@ -14,13 +14,19 @@ export interface WdIssue {
 }
 
 export function readWdMap(file: Uint8Array): WdMap {
-  const decoded = decodeGcpf(file);
-  // A normal corpus file carries exactly the 4-byte footer and nothing after it;
-  // the writer below always emits that standard footer, so anything else is refused
-  // here rather than silently dropped on the way back out.
-  if (!decoded.footerOk || decoded.trailingBytes !== 4) {
+  // Validate the container footer before allocating or decompressing its payload.
+  // A malformed file must not be able to trigger a large allocation merely by
+  // advertising a large (otherwise structurally valid) decompressed size.
+  const header = readGcpfHeader(file);
+  const end = header.dataEnd;
+  if (
+    file.length - end !== 4 ||
+    file[end] !== 71 || file[end + 1] !== 67 ||
+    file[end + 2] !== 80 || file[end + 3] !== 70
+  ) {
     throw new WdSchemaError('FORMAT', '/', 'invalid GCPF footer or trailing bytes');
   }
+  const decoded = decodeGcpf(file);
   return wdMapFromGd(decodeStoreVar(decoded.payload));
 }
 
