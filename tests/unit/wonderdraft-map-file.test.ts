@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { describe, expect, it } from 'vitest';
-import { GcpfError, encodeGcpf } from '../../src/core/formats/gcpf.ts';
+import { GcpfError, encodeGcpf, readGcpfHeader } from '../../src/core/formats/gcpf.ts';
 import { GdDict, GodotVarError, encodeStoreVar } from '../../src/core/formats/godot-var.ts';
 import type { GdValue } from '../../src/core/formats/godot-var.ts';
 import { WD_LIMITS, WdSchemaError, wdMapToGd } from '../../src/core/formats/wonderdraft-map.ts';
@@ -515,6 +515,14 @@ describe('readWdMap footer and container cases (rule R2: nothing is dropped sile
   ];
   it.each(cases)('%s', (_name, damage, expected) => {
     expect(outcome(damage(base))).toBe(expected);
+  });
+
+  it('checks the footer before decoding the payload: a corrupt payload with a damaged footer reports the footer error', () => {
+    // The first data byte is a FastLZ back-reference with nothing to copy: the size table still passes, the payload cannot decode.
+    const bad = base.slice();
+    bad[16 + 4 * readGcpfHeader(base).blockCount] = 0xe0;
+    bad[bad.length - 1] ^= 1;
+    expect(outcome(bad)).toBe('WdSchemaError/FORMAT@/');
   });
 
   it('the undamaged file reads', () => {
