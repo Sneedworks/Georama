@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 vi.mock('electron', () => ({app: {}, protocol: {}, session: {defaultSession: {}}}));
-vi.mock('node:fs/promises', async original => { const actual = await original<typeof import('node:fs/promises')>(); return {...actual, readFile: vi.fn(actual.readFile), realpath: vi.fn(actual.realpath), stat: vi.fn(actual.stat)}; });
-import { handleAppRequest, MAX_UI_ASSET_BYTES } from '../../electron/protocol.ts';
+vi.mock('node:fs/promises', async original => { const actual = await original<typeof import('node:fs/promises')>(); return {...actual, readFile: vi.fn(actual.readFile), realpath: vi.fn(actual.realpath), stat: vi.fn(actual.stat), open: vi.fn(actual.open)}; });
+import { handleAppRequest, MAX_UI_ASSET_BYTES, MAX_IN_FLIGHT_BYTES, MAX_IN_FLIGHT_READS, createReadBudget, readBoundedBytes, type ReadBudget } from '../../electron/protocol.ts';
 import { buildCsp } from '../../electron/security.ts';
 let temp: string, root: string;
 const get = (pathname: string, method = 'GET', headers = {}) => handleAppRequest({url: 'georama://app' + pathname, method, headers: new Headers(headers)}, root);
@@ -37,15 +39,31 @@ describe('bounded UI protocol core', () => {
   });
   it('caps UI files at 16 MiB before any body read', async () => { expect(MAX_UI_ASSET_BYTES).toBe(16 * 1024 * 1024); expect((await get('/large.png')).status).toBe(413); expect(fs.readFile).not.toHaveBeenCalled(); });
   it('omits content-length when the body read fails after a successful stat (EIO reads as 500)', async () => {
-    vi.mocked(fs.stat).mockResolvedValueOnce({isFile: () => true, size: 10} as never);
-    vi.mocked(fs.readFile).mockRejectedValueOnce(Object.assign(new Error('io'), {code: 'EIO'}));
+    const openMock = vi.mocked(fs.open) as unknown as {
+      getMockImplementation(): (...args: never[]) => Promise<FileHandle>;
+      mockImplementationOnce(impl: (...args: never[]) => Promise<FileHandle>): void;
+    };
+    const through = openMock.getMockImplementation();
+    openMock.mockImplementationOnce(async (...args: never[]) => {
+      const handle = await through(...args);
+      vi.spyOn(handle, 'read').mockRejectedValueOnce(Object.assign(new Error('io'), {code: 'EIO'}));
+      return handle;
+    });
     const r = await get('/index.html');
     expect(r.status).toBe(500); expect(await r.text()).toBe('');
     expect(r.headers.has('content-length')).toBe(false); await headersOn(r);
   });
   it('omits content-length when the body read fails after a successful stat (EACCES reads as 403)', async () => {
-    vi.mocked(fs.stat).mockResolvedValueOnce({isFile: () => true, size: 10} as never);
-    vi.mocked(fs.readFile).mockRejectedValueOnce(Object.assign(new Error('denied'), {code: 'EACCES'}));
+    const openMock = vi.mocked(fs.open) as unknown as {
+      getMockImplementation(): (...args: never[]) => Promise<FileHandle>;
+      mockImplementationOnce(impl: (...args: never[]) => Promise<FileHandle>): void;
+    };
+    const through = openMock.getMockImplementation();
+    openMock.mockImplementationOnce(async (...args: never[]) => {
+      const handle = await through(...args);
+      vi.spyOn(handle, 'read').mockRejectedValueOnce(Object.assign(new Error('denied'), {code: 'EACCES'}));
+      return handle;
+    });
     const r = await get('/index.html');
     expect(r.status).toBe(403); expect(await r.text()).toBe('');
     expect(r.headers.has('content-length')).toBe(false); await headersOn(r);
@@ -116,4 +134,85 @@ describe('bounded UI protocol core', () => {
     expect((await get('/index.html?' + 'q'.repeat(100))).status).toBe(200);
   });
   it.each(['http://app/index.html', 'georama://app.evil/index.html', 'georama://app@other/index.html', 'georama://user@app/index.html', 'georama://app:80/index.html'])('rejects handler authority %s', async url => { const r = await handleAppRequest({url, method: 'GET'}, root); expect(r.status).toBe(404); await headersOn(r); });
+});
+
+/** Simple open() seam: the next open returns a real handle with a read-call spy attached. */
+function spyNextOpenReads(): () => number {
+  const openMock = vi.mocked(fs.open) as unknown as {
+    getMockImplementation(): (...args: never[]) => Promise<FileHandle>;
+    mockImplementationOnce(impl: (...args: never[]) => Promise<FileHandle>): void;
+  };
+  const through = openMock.getMockImplementation();
+  let spy: ReturnType<typeof vi.spyOn> | undefined;
+  openMock.mockImplementationOnce(async (...args: never[]) => {
+    const handle = await through(...args);
+    spy = vi.spyOn(handle, 'read');
+    return handle;
+  });
+  return () => spy?.mock.calls.length ?? -1;
+}
+
+const getWithBudget = (pathname: string, budget: ReadBudget, method = 'GET') =>
+  handleAppRequest({url: 'georama://app' + pathname, method, headers: new Headers({})}, root, budget);
+
+describe('admission budget (issue #5 A)', () => {
+  it('refuses with 503 and no body read when the aggregate budget is exhausted', async () => {
+    expect(MAX_IN_FLIGHT_BYTES).toBe(64 * 1024 * 1024); expect(MAX_IN_FLIGHT_READS).toBe(16);
+    const budget = createReadBudget({maxBytes: 1, maxReads: 16});
+    const reads = spyNextOpenReads();
+    const r = await getWithBudget('/index.html', budget);
+    expect(r.status).toBe(503); expect(await r.text()).toBe(''); await headersOn(r);
+    expect(reads()).toBe(0);
+  });
+  it('admits a later request after an earlier one completes (reservation is released)', async () => {
+    const budget = createReadBudget({maxBytes: 64, maxReads: 1});
+    const first = await getWithBudget('/index.html', budget); expect(first.status).toBe(200); expect(await first.text()).toBe('<!doctype html>control');
+    const second = await getWithBudget('/a.png', budget); expect(second.status).toBe(200); expect(await second.text()).toBe('png');
+  });
+});
+
+describe('descriptor-bound bounded reads (issue #5 C)', () => {
+  it('stops at cap+1 and refuses when a handle reports more bytes than requested', async () => {
+    let calls = 0;
+    const evil = {read: async (buf: Buffer, offset: number, length: number) => { calls += 1; buf.fill(0x61, offset, offset + length); return {bytesRead: length + 1000}; }};
+    expect(await readBoundedBytes(evil as never, 10)).toBeNull();
+    expect(calls).toBe(1);
+  });
+  it('returns exact bytes for a well-behaved handle', async () => {
+    const chunks = [Buffer.from('hello '), Buffer.from('world')]; let i = 0;
+    const good = {read: async (buf: Buffer, offset: number, length: number) => {
+      if (i >= chunks.length) return {bytesRead: 0};
+      const chunk = chunks[i++]; const n = Math.min(chunk.length, length); chunk.copy(buf, offset, 0, n); return {bytesRead: n};
+    }};
+    expect((await readBoundedBytes(good as never, 1024))?.toString()).toBe('hello world');
+  });
+  it('refuses a real file larger than the cap when opened without reading past the bound', async () => {
+    const reads = spyNextOpenReads();
+    const r = await get('/large.png');
+    expect(r.status).toBe(413); expect(await r.text()).toBe(''); await headersOn(r);
+    expect(vi.mocked(fs.open)).toHaveBeenCalled(); expect(reads()).toBe(0);
+  });
+  it('HEAD opens for metadata but never reads the body', async () => {
+    const reads = spyNextOpenReads();
+    const r = await get('/index.html', 'HEAD');
+    expect(r.status).toBe(200); expect(await r.text()).toBe(''); expect(r.headers.get('content-length')).toBe('22'); await headersOn(r);
+    expect(reads()).toBe(0);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('non-regular files (issue #5 B stall part)', () => {
+  it('refuses a FIFO quickly instead of blocking', async () => {
+    const fifoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'georama-protocol-fifo-'));
+    try {
+      const fifo = path.join(fifoRoot, 'swap');
+      execFileSync('mkfifo', [fifo]);
+      // Simulate the stat/open window: stat once saw a regular file, but the descriptor is a FIFO.
+      vi.mocked(fs.stat).mockResolvedValueOnce({isFile: () => true, size: 8} as never);
+      const r = await handleAppRequest({url: 'georama://app/swap', method: 'GET', headers: new Headers({})}, fifoRoot);
+      expect(r.status).toBe(404); expect(await r.text()).toBe('');
+      expect(r.headers.get('content-security-policy')).toBe(buildCsp()); expect(r.headers.get('x-content-type-options')).toBe('nosniff'); expect(r.headers.get('cache-control')).toBe('no-store');
+    } finally {
+      await fs.rm(fifoRoot, {recursive: true, force: true});
+    }
+  }, 3000);
 });
