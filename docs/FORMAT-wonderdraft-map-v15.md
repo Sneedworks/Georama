@@ -14,7 +14,7 @@
 | … | … | blocks; each is an independent FastLZ level-1 stream (back-references never cross a block start) |
 | end | 4 | footer `GCPF` |
 
-All-zero blocks compress to ~57 bytes, which is why a ~420 MB payload is a 43–107 MB file.
+All-zero blocks compress to ~57 bytes, which is why a ~<redacted> MB payload is a <redacted> MB file.
 
 ## 2. Payload — Godot 3.x binary Variant (`File.store_var`)
 
@@ -54,7 +54,7 @@ Variant header `u32`: bits 0–7 = type, bit 16 = 64-bit flag.
 
 ## 4. Raster layers — three serialized Godot `Image` objects (RGBA8, `map_width × map_height`, row-major, top-left origin)
 
-Each is `Object:Image` {`data` {`width`, `height`, `format`:"RGBA8", `mipmaps`:false, `data`: PoolByteArray}}; ≈139 MB each for <redacted>×<redacted>.
+Each is `Object:Image` {`data` {`width`, `height`, `format`:"RGBA8", `mipmaps`:false, `data`: PoolByteArray}}; ≈<redacted> MB each for <redacted>×<redacted>.
 
 | layer | meaning (verified) |
 |---|---|
@@ -66,13 +66,13 @@ Each is `Object:Image` {`data` {`width`, `height`, `format`:"RGBA8", `mipmaps`:f
 
 - `res://sprites/{trees,mountains,symbols}/<set>/<name>` — built-in, inside the install's `.pck` as `<name>.wonderdraft_image` (**a plain PNG**).
 - `res://packs/<DefaultPack>/sprites/…` — built-in packs (Arabia by Chan, Gothic Horror, Tang Dynasty by Chan).
-- `assets/<CustomPack>/…` — user packs in the Wonderdraft user-data `assets/` folder (here: `GogotsMaps-Hand Draw`, `themes`).
+- `assets/<CustomPack>/…` — user packs in the Wonderdraft user-data `assets/` folder (for example `<user-pack>`, `themes`).
 - Path/border/ground/water styles are referenced by name (`res://textures/paths/path_blended`, `border_gradient`, theme `Worn`, …).
 - `.wonderdraft_theme` = plain JSON; `.wonderdraft_symbols` = plain JSON per symbol folder.
 
 ## 6. `.pck` (Godot 3.0, `GDPC` v1) index layout
 
-`magic(4) pack_version(4)=1 godot_major(4) minor(4) rev(4) reserved 16×u32 file_count(u32)`, then per file `{u32 path_len (padded to 4), path, u64 offset, u64 size, 16-byte md5}`; offsets are absolute in the standalone `.pck`. Install inspected: 2403 files — 1745 `.wonderdraft_image` (PNG), 114 compiled scripts (**not touched**), 21 shaders (**names only, not read**), 18 fonts (OFL families), 9 themes.
+`magic(4) pack_version(4)=1 godot_major(4) minor(4) rev(4) reserved 16×u32 file_count(u32)`, then per file `{u32 path_len (padded to 4), path, u64 offset, u64 size, 16-byte md5}`; offsets are absolute in the standalone `.pck`. Install inspected: <redacted> files — <redacted> `.wonderdraft_image` (PNG), compiled scripts (**not touched**), shaders (**names only, not read**), fonts (OFL families), themes.
 
 ## 7. Corpus facts (<redacted> maps)
 
@@ -88,13 +88,13 @@ These are the contract for any encoder that must reproduce Wonderdraft-written b
 
 | Item | Measured |
 |---|---|
-| Int | every int is 64-bit-flagged (header `0x00010002` + i64): 629,544 of 629,544 (627,391 would fit in int32) |
-| Real | f32 **iff** exactly representable as f32 (`Math.fround(v) === v`), else f64: 1,129,660 f32 · 17,515 f64 · 0 f64 values representable as f32 |
-| String | u32 byte length + UTF-8 + zero padding to a multiple of 4: 7,843,979 strings; every pad byte is 0; all valid UTF-8 round-trip |
+| Int | every int is 64-bit-flagged (header `0x00010002` + i64): <redacted> of <redacted> (<redacted> would fit in int32) |
+| Real | f32 **iff** exactly representable as f32 (`Math.fround(v) === v`), else f64: <redacted> f32 · <redacted> f64 · 0 f64 values representable as f32 |
+| String | u32 byte length + UTF-8 + zero padding to a multiple of 4: <redacted> strings; every pad byte is 0; all valid UTF-8 round-trip |
 | PoolByteArray | u32 length + bytes + zero padding to 4 (every pad byte is 0) |
-| Dictionary / Array | count word never has bit 31 set (562,640 dictionaries, 2,617 arrays); all 6,711,947 dictionary keys are strings, no duplicate keys |
-| NodePath | new format only; only the empty path occurs (217×: 0 names, 0 subnames, flags 0) |
-| Object | `Image` ×360, `NinePatchRect` ×31, `ImageTexture` ×189; 642 null objects (empty class string, `11 00 00 00 00 00 00 00`) next to real nils (`00 00 00 00`): the two are different wire values and must stay different in memory; no object-as-id |
+| Dictionary / Array | count word never has bit 31 set (<redacted> dictionaries, <redacted> arrays); all <redacted> dictionary keys are strings, no duplicate keys |
+| NodePath | new format only; only the empty path occurs (<redacted>×: 0 names, 0 subnames, flags 0) |
+| Object | `Image`, `NinePatchRect` and `ImageTexture` objects; null objects (empty class string, `11 00 00 00 00 00 00 00`) next to real nils (`00 00 00 00`): the two are different wire values and must stay different in memory; no object-as-id |
 | Types present | 0 1 2 3 4 5 6 14 15 17 18 19 20 22 26 — never seen: 7–13, 16, 21, 23–25 |
 | Header flags | only bit 16 occurs; bools are 0/1 |
-| End | every payload parses to its last byte (57/57) |
+| End | every payload parses to its last byte (<redacted>/<redacted>) |
