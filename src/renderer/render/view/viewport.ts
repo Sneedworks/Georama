@@ -89,6 +89,9 @@ export function screenToMap(view: ViewState, sx: number, sy: number): MapPointVe
   }
   const u = (sx - view.tx) / view.scale;
   const v = (sy - view.ty) / view.scale;
+  if (!Number.isFinite(u) || !Number.isFinite(v)) {
+    return { ok: false, code: 'LIMIT', message: 'map coordinates outside finite range' };
+  }
   return { ok: true, u, v };
 }
 
@@ -104,12 +107,18 @@ export function zoomAt(view: ViewState, factor: number, sx: number, sy: number):
   }
   const u = (sx - view.tx) / view.scale;
   const v = (sy - view.ty) / view.scale;
+  if (!Number.isFinite(u) || !Number.isFinite(v)) {
+    return { ok: false, code: 'LIMIT', message: 'zoom anchor outside finite range' };
+  }
   const newScale = view.scale * factor;
   if (!scaleWithinLimits(newScale)) {
     return { ok: false, code: 'LIMIT', message: 'scale outside limits' };
   }
   const tx = sx - u * newScale;
   const ty = sy - v * newScale;
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+    return { ok: false, code: 'LIMIT', message: 'zoom translation outside finite range' };
+  }
   return { ok: true, view: { scale: newScale, tx, ty } };
 }
 
@@ -120,5 +129,10 @@ export function panBy(view: ViewState, dx: number, dy: number): PanVerdict {
   if (!viewValid(view)) {
     return { ok: false, code: 'INPUT', message: 'view scale must be finite and > 0' };
   }
-  return { ok: true, view: { scale: view.scale, tx: view.tx + dx, ty: view.ty + dy } };
+  const tx = view.tx + dx;
+  const ty = view.ty + dy;
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+    return { ok: false, code: 'LIMIT', message: 'pan translation outside finite range' };
+  }
+  return { ok: true, view: { scale: view.scale, tx, ty } };
 }
