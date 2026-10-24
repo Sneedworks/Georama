@@ -4,10 +4,10 @@ import type { WebContents } from 'electron';
 import { BRAND } from '../src/shared/brand.ts';
 import type { AppInfo } from '../src/shared/ipc.ts';
 import { registerIpc } from './ipc.ts';
-import { createNavigationGuard } from './navigation-guard.ts';
+import { createNavigationGuard, isEditorDocument } from './navigation-guard.ts';
 import { installNetwork } from './network.ts';
 import { installAppProtocol, registerAppScheme } from './protocol.ts';
-import { installSecurity } from './security.ts';
+import { installSecurity, isTrustedAppUrl } from './security.ts';
 
 app.setName(BRAND.id);
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
@@ -38,7 +38,7 @@ const navigationGuard = createNavigationGuard({
   observe: (violation) => {
     // One line, no page-controlled text beyond the scheme: the URL is attacker-chosen.
     const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(violation.url)?.[0] ?? 'unparsed:';
-    console.error(`navigation guard: ${violation.action}; ${violation.isMainFrame ? 'main' : 'child'} frame committed ${scheme}`);
+    console.error(`navigation guard: ${violation.action}; ${violation.isMainFrame ? 'main' : 'child'} frame ${violation.precommit ? 'before commit' : 'committed'} ${scheme}`);
   },
   recover: (violation) => {
     // Create the replacement first: closing the last window would quit the app.
@@ -74,6 +74,13 @@ function createEditorWindow(): BrowserWindow {
   mainWindow = window;
   window.on('closed', () => { if (mainWindow === window) mainWindow = null; });
   const contents = window.webContents;
+  // Main frame, before commit: an app document other than the editor never loads, so the window keeps its unsaved
+  // state. The attempt counts toward the same 60 s limit as a committed violation.
+  contents.on('will-navigate', (event, url) => {
+    if (!isTrustedAppUrl(url) || isEditorDocument(url, editorUrl)) return;
+    event.preventDefault();
+    navigationGuard.check({ url, isMainFrame: true, target: contents, precommit: true });
+  });
   // Main frame: committed navigations only. did-start-navigation also fires for attempts that will-navigate
   // then cancels (a dropped file, an external link); recovering from those would destroy unsaved editor state.
   // Child frames: any attempt counts, because the app has no frames and the page can only create one itself.

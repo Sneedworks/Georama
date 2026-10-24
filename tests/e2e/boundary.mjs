@@ -893,10 +893,25 @@ else onmessage = e => run(self,e.data);
     assert.equal(evidence.http.length, http); assert.equal(evidence.tcp.length, tcp);
     return info;
   }));
-  await probe('cross-document navigation retains IPC authority', () => useFreshApp('other-document', async () => {
-    const info = await expectRecovery('second georama://app document', () => call('navigate', 'assign', 'georama://app/__boundary-other.html'));
-    evidence.observations.recoveryOtherDocument = info;
-    assert.equal(info.windows, 1); assert.match(info.guard[0], /recover; main frame committed georama:/);
+  await probe('cross-document navigation is refused before commit and keeps IPC authority', () => useFreshApp('other-document', async () => {
+    const before = await pageTargets();
+    assert.equal(before.length, 1, `exactly one page before: ${JSON.stringify(before.map(target => target.url))}`);
+    const oldId = before[0].id, guardBefore = guardLines().length;
+    await call('navigate', 'assign', 'georama://app/__boundary-other.html').catch(() => {});
+    for (const deadline = Date.now() + 10_000; guardLines().length <= guardBefore && Date.now() < deadline;) await delay(100);
+    const after = await pageTargets();
+    const info = {
+      windows: await main.evaluate('__boundaryElectron.BrowserWindow.getAllWindows().length'),
+      sameWindow: after.length === 1 && after[0].id === oldId,
+      url: after[0]?.url,
+      guard: guardLines().slice(guardBefore),
+    };
+    evidence.observations.refusedOtherDocument = info;
+    assert.equal(info.windows, 1, 'no replacement window');
+    assert.ok(info.sameWindow, 'the same editor window remains');
+    assert.equal(info.url, editorUrl, 'the page never left the editor document');
+    assert.equal(info.guard.length, 1, `one guard line: ${JSON.stringify(info.guard)}`);
+    assert.match(info.guard[0], /^navigation guard: refuse; main frame before commit georama:$/);
     assert.equal((await page.evaluate('window.georama.getAppInfo()')).id, 'georama');
     return info;
   }));
