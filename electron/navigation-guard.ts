@@ -2,9 +2,11 @@ export interface NavigationCheck {
   url: string;
   isMainFrame: boolean;
   target?: object;
+  /** Main frame, judged before commit: the document never loads, so the window is kept and never replaced. */
+  precommit?: boolean;
 }
 export interface NavigationViolation extends NavigationCheck {
-  action: 'recover' | 'quit';
+  action: 'recover' | 'refuse' | 'quit';
 }
 
 /** Custom-scheme URL.origin is "null": compare the authority fields, not origin. */
@@ -30,14 +32,19 @@ export function createNavigationGuard(options: {
   let quitting = false;
   return { check(event) {
     if (quitting || (event.isMainFrame && isEditorDocument(event.url, options.editorUrl))) return;
-    if (event.target && discarded.has(event.target)) return;
-    if (event.target) discarded.add(event.target);
+    // A committed violation discards its window once. A refusal leaves the window alive, so it discards nothing.
+    if (!event.precommit && event.target && discarded.has(event.target)) return;
+    if (!event.precommit && event.target) discarded.add(event.target);
     const time = options.now();
     recoveries = recoveries.filter(previous => time - previous < 60_000);
-    const action = recoveries.length < 3 ? 'recover' : 'quit';
+    // Refusals and committed violations share one limit: the fourth within 60 s quits.
+    const action = recoveries.length < 3 ? (event.precommit ? 'refuse' : 'recover') : 'quit';
     const violation: NavigationViolation = {...event, action};
     options.observe(violation);
     if (action === 'quit') { quitting = true; options.quit(violation); }
-    else { recoveries.push(time); options.recover(violation); }
+    else {
+      recoveries.push(time);
+      if (action === 'recover') options.recover(violation);
+    }
   }};
 }

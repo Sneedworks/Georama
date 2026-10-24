@@ -58,4 +58,38 @@ describe('document navigation state machine', () => {
     guard.check({url: 'about:blank', isMainFrame: true, target: {}});
     expect(recover).toHaveBeenCalledTimes(4); expect(quit).not.toHaveBeenCalled();
   });
+  it('refuses an app document before commit without replacing the window', () => {
+    const {guard, recover, quit, observe} = fixture();
+    guard.check({url: 'georama://app/other.html', isMainFrame: true, target: {}, precommit: true});
+    expect(recover).not.toHaveBeenCalled(); expect(quit).not.toHaveBeenCalled();
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(observe.mock.calls[0][0]).toMatchObject({action: 'refuse'});
+  });
+  it('keeps counting refusals on the same window, which is never replaced, and quits on the fourth', () => {
+    const {guard, recover, quit, observe} = fixture();
+    const target = {};
+    for (let i = 0; i < 4; i++) guard.check({url: 'georama://app/other.html', isMainFrame: true, target, precommit: true});
+    expect(recover).not.toHaveBeenCalled(); expect(quit).toHaveBeenCalledTimes(1); expect(observe).toHaveBeenCalledTimes(4);
+  });
+  it('shares one limit between refusals and committed violations', () => {
+    const {guard, recover, quit} = fixture();
+    guard.check({url: 'georama://app/other.html', isMainFrame: true, target: {}, precommit: true});
+    guard.check({url: 'georama://app/other.html', isMainFrame: true, target: {}, precommit: true});
+    guard.check({url: 'about:blank', isMainFrame: true, target: {}});
+    expect(recover).toHaveBeenCalledTimes(1); expect(quit).not.toHaveBeenCalled();
+    guard.check({url: 'about:blank', isMainFrame: true, target: {}});
+    expect(quit).toHaveBeenCalledTimes(1);
+  });
+  it('does not mark a refused window as discarded, so its later committed violation still recovers', () => {
+    const {guard, recover} = fixture();
+    const target = {};
+    guard.check({url: 'georama://app/other.html', isMainFrame: true, target, precommit: true});
+    guard.check({url: 'about:blank', isMainFrame: true, target});
+    expect(recover).toHaveBeenCalledTimes(1);
+  });
+  it('accepts the editor and its hash changes on the refusal path without observing', () => {
+    const {guard, recover, quit, observe} = fixture();
+    guard.check({url: editor + '#map', isMainFrame: true, target: {}, precommit: true});
+    expect(recover).not.toHaveBeenCalled(); expect(quit).not.toHaveBeenCalled(); expect(observe).not.toHaveBeenCalled();
+  });
 });
