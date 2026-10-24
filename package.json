@@ -7,15 +7,22 @@
   "main": "dist-electron/main.cjs",
   "engines": { "node": "^22.18.0 || ^24.0.0 || >=26.0.0" },
   "scripts": {
+    "pretypecheck": "node scripts/require-node-22.mjs",
     "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.renderer.json && tsc -p tsconfig.node.json",
+    "pretest": "node scripts/require-node-22.mjs",
     "test": "vitest run",
+    "prebuild": "node scripts/require-node-22.mjs",
     "build:main": "node scripts/build-main.mjs",
     "build:renderer": "vite build",
     "build": "npm run typecheck && npm run build:main && npm run build:renderer",
     "app": "npm run build:main && npm run build:renderer && node scripts/run-electron.mjs .",
+    "pree2e": "node scripts/require-node-22.mjs",
     "e2e": "npm run build && node tests/e2e/smoke.mjs",
+    "pree2e:gl": "node scripts/require-node-22.mjs",
     "e2e:gl": "npm run build && node tests/e2e/gl.mjs",
+    "pree2e:compose": "node scripts/require-node-22.mjs",
     "e2e:compose": "npm run build && node tests/e2e/compose.mjs",
+    "precorpus": "node scripts/require-node-22.mjs",
     "corpus": "vitest run --config vitest.corpus.config.ts"
   },
   "devDependencies": {
