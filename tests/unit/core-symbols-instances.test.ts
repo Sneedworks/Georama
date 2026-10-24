@@ -15,7 +15,7 @@ function lookupFor(key: string, w = 16, h = 16, x = 32, y = 8, page = 0): AtlasL
   };
 }
 
-function sym(over: Partial<SymbolInput> = {}, texture: unknown = 'res://sprites/grove_alpha/oak_01'): SymbolInput {
+function sym(over: Partial<SymbolInput> = {}, texture: unknown = 'res://sprites/synthetic/tex_02'): SymbolInput {
   return {
     position: { x: 100, y: 50 },
     rotation: 0,
@@ -35,7 +35,7 @@ function keyOf(text: string): string {
 }
 
 describe('finite Float32 GPU instance records (I5)', () => {
-  const texture = 'res://sprites/grove_alpha/oak_01';
+  const texture = 'res://sprites/synthetic/tex_02';
   const atlas = lookupFor(keyOf(texture));
 
   it.each([
@@ -79,7 +79,7 @@ describe('finite Float32 GPU instance records (I5)', () => {
 
 describe('E5 transform (I3/I5)', () => {
   it('rotation 0 scale (2,1) offset (0,0) no mirror gives diag(2,1) t=(100,50)', () => {
-    const text = 'res://sprites/grove_alpha/oak_01';
+    const text = 'res://sprites/synthetic/tex_02';
     const key = keyOf(text);
     expect(classifySymbolTexture(text).class).toBe('asset');
     const v = buildInstances([sym({}, text)], lookupFor(key));
@@ -108,7 +108,7 @@ describe('E5 transform (I3/I5)', () => {
   });
 
   it('mirror gives A00 = -2 (I3)', () => {
-    const text = 'res://sprites/grove_alpha/oak_01';
+    const text = 'res://sprites/synthetic/tex_02';
     const key = keyOf(text);
     const v = buildInstances([sym({ mirror: true }, text)], lookupFor(key));
     expect(v.ok).toBe(true);
@@ -118,7 +118,7 @@ describe('E5 transform (I3/I5)', () => {
   });
 
   it('rotation pi/2 scale (1,1) gives [[0,-1],[1,0]] (I3)', () => {
-    const text = 'res://sprites/grove_alpha/oak_01';
+    const text = 'res://sprites/synthetic/tex_02';
     const key = keyOf(text);
     const v = buildInstances([sym({ rotation: Math.PI / 2, scale: { x: 1, y: 1 } }, text)], lookupFor(key));
     expect(v.ok).toBe(true);
@@ -130,7 +130,7 @@ describe('E5 transform (I3/I5)', () => {
   });
 
   it('offset (3,4) scale (2,1) rotation 0 gives t=(106,54) (I3)', () => {
-    const text = 'res://sprites/grove_alpha/oak_01';
+    const text = 'res://sprites/synthetic/tex_02';
     const key = keyOf(text);
     const v = buildInstances([sym({ offset: { x: 3, y: 4 } }, text)], lookupFor(key));
     expect(v.ok).toBe(true);
@@ -142,7 +142,7 @@ describe('E5 transform (I3/I5)', () => {
 
 describe('draw order with ties (I6)', () => {
   it('sorts by (zIndex, y, index)', () => {
-    const text = 'res://sprites/grove_alpha/oak_01';
+    const text = 'res://sprites/synthetic/tex_02';
     const key = keyOf(text);
     const atlas = lookupFor(key);
     const symbols: SymbolInput[] = [
@@ -162,11 +162,11 @@ describe('draw order with ties (I6)', () => {
 });
 
 describe('placeholder kinds records and colours (I2/I4/I5)', () => {
-  const spriteText = 'res://sprites/grove_alpha/oak_01';
+  const spriteText = 'res://sprites/synthetic/tex_02';
   const spriteKey = keyOf(spriteText);
-  const otherText = 'res://sprites/grove_alpha/pine_02';
+  const otherText = 'res://sprites/synthetic/tex_04';
   const otherKey = keyOf(otherText);
-  const overText = 'res://sprites/grove_alpha/cedar_03';
+  const overText = 'res://sprites/synthetic/tex_01';
   const overKey = keyOf(overText);
 
   function mixedAtlas(): AtlasLookup {
@@ -287,11 +287,11 @@ describe('I1 INPUT table (I1)', () => {
 
 describe('counts invariant on mixed list (I7)', () => {
   it('total equals sprites plus placeholders; unapplied counted', () => {
-    const spriteText = 'res://sprites/grove_alpha/oak_01';
+    const spriteText = 'res://sprites/synthetic/tex_02';
     const spriteKey = keyOf(spriteText);
-    const overText = 'res://sprites/grove_alpha/cedar_03';
+    const overText = 'res://sprites/synthetic/tex_01';
     const overKey = keyOf(overText);
-    const missingText = 'res://sprites/grove_alpha/pine_02';
+    const missingText = 'res://sprites/synthetic/tex_04';
     const atlas: AtlasLookup = {
       pageSize: 64,
       reserved: RESERVED,
