@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import path from 'node:path';
+import { isNativeAbsolutePath } from '../native-path.ts';
+import { readWindowsAsset } from './windows-read.ts';
 
 export const ASSET_FILE_LIMITS = Object.freeze({
   maxBytes: 64 * 1024 * 1024,
@@ -25,8 +26,7 @@ const BAD_CHAR = /[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufef
 const DATA_SUFFIXES = Object.freeze(['.png', '.wonderdraft_image', '.wonderdraft_symbols', '.wonderdraft_theme']);
 
 function validate(root: string, relative: string, maxBytes: number): string[] {
-  if (typeof root !== 'string' || root.length === 0 || root.length > ASSET_FILE_LIMITS.maxPathChars ||
-      !root.startsWith('/') || /[\x00-\x1f\x7f-\x9f\p{Surrogate}]/u.test(root) || path.posix.normalize(root) !== root) {
+  if (!isNativeAbsolutePath(root, process.platform, ASSET_FILE_LIMITS.maxPathChars)) {
     throw new AssetFileError('PATH', 'Asset root must be a normalized absolute directory');
   }
   if (typeof relative !== 'string' || relative.length === 0 || relative.length > ASSET_FILE_LIMITS.maxPathChars ||
@@ -75,9 +75,16 @@ export async function readAssetFile(
   relative: string,
   maxBytes: number = ASSET_FILE_LIMITS.maxBytes,
 ): Promise<Uint8Array> {
-  // No Windows descriptor-confined backend yet; do not allow any filesystem I/O.
-  if (process.platform !== 'linux') throw new AssetFileError('IO', 'Asset reader requires Linux descriptor paths');
+  if (process.platform !== 'linux' && process.platform !== 'win32') {
+    throw new AssetFileError('IO', 'Asset reader requires a supported filesystem backend');
+  }
   const parts = validate(root, relative, maxBytes);
+  if (process.platform === 'win32') {
+    const result = await readWindowsAsset(root, relative, maxBytes);
+    if (result.bytes !== undefined) return result.bytes;
+    const code = result.error ?? 'IO';
+    throw new AssetFileError(code, code === 'LIMIT' ? 'Asset exceeds byte limit' : 'Could not read asset data');
+  }
   const handles: FileHandle[] = [];
   let result: Uint8Array | undefined;
   let failure: AssetFileError | undefined;
