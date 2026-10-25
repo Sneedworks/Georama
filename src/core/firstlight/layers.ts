@@ -209,9 +209,27 @@ export function buildFirstLightLayers(input: FirstLightInput): FirstLightOutput 
   ) {
     throw new RangeError('the window must sit fully inside the map');
   }
-  const land = landMask(input.mask, input.threshold);
-  const { coastLand, coastWater } = coastFlags(land, mapWidth, mapHeight);
   const { x0, y0, width, height } = input;
+
+  // Only output texels and their COAST_RADIUS neighborhood affect the result.
+  // Clip the halo to the actual map borders, so an edge window sees precisely
+  // the same in-map neighbors as a full-map coastline classification.
+  const haloX0 = Math.max(0, x0 - COAST_RADIUS);
+  const haloY0 = Math.max(0, y0 - COAST_RADIUS);
+  const haloX1 = Math.min(mapWidth, x0 + width + COAST_RADIUS);
+  const haloY1 = Math.min(mapHeight, y0 + height + COAST_RADIUS);
+  const haloWidth = haloX1 - haloX0;
+  const haloHeight = haloY1 - haloY0;
+  const land = new Uint8Array(haloWidth * haloHeight);
+  const maskBytes = input.mask.data;
+  for (let y = 0; y < haloHeight; y++) {
+    const sourceRow = ((haloY0 + y) * mapWidth + haloX0) * 4;
+    const destRow = y * haloWidth;
+    for (let x = 0; x < haloWidth; x++) {
+      land[destRow + x] = maskBytes[sourceRow + x * 4 + 3] >= input.threshold ? 1 : 0;
+    }
+  }
+  const { coastLand, coastWater } = coastFlags(land, haloWidth, haloHeight);
   const maskOut = new Uint8Array(width * height * 4);
   const groundOut = new Uint8Array(width * height * 4);
   const waterOut = new Uint8Array(width * height * 4);
@@ -224,7 +242,7 @@ export function buildFirstLightLayers(input: FirstLightInput): FirstLightOutput 
     for (let col = 0; col < width; col++) {
       const mapI = ((y0 + row) * mapWidth + (x0 + col)) * 4;
       const outI = (row * width + col) * 4;
-      const flat = (y0 + row) * mapWidth + (x0 + col);
+      const flat = (y0 + row - haloY0) * haloWidth + (x0 + col - haloX0);
       const isLand = land[flat] === 1;
       if (isLand) {
         landCount++;
