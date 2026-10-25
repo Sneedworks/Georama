@@ -117,10 +117,14 @@ function coastFlags(land: Uint8Array, width: number, height: number): { coastLan
   return { coastLand, coastWater };
 }
 
-/** Summed-area table over a 0/1 flag array: sat[(y+1)*(w+1)+(x+1)] sums rows 0..y, cols 0..x. */
-function summedArea(flags: Uint8Array, width: number, height: number): Float64Array {
+/** Summed-area table over a 0/1 flag array: sat[(y+1)*(w+1)+(x+1)] sums rows 0..y, cols 0..x.
+ * Each prefix count is at most width*height. Use half-sized Uint32 storage
+ * when every count fits; retain Float64 for theoretical larger inputs.
+ */
+function summedArea(flags: Uint8Array, width: number, height: number): Uint32Array | Float64Array {
   const stride = width + 1;
-  const sat = new Float64Array((width + 1) * (height + 1));
+  const length = (width + 1) * (height + 1);
+  const sat = width * height <= 0xffff_ffff ? new Uint32Array(length) : new Float64Array(length);
   for (let y = 0; y < height; y++) {
     let rowSum = 0;
     for (let x = 0; x < width; x++) {
@@ -131,7 +135,7 @@ function summedArea(flags: Uint8Array, width: number, height: number): Float64Ar
   return sat;
 }
 
-function rectSum(sat: Float64Array, width: number, x0: number, y0: number, size: number): number {
+function rectSum(sat: Uint32Array | Float64Array, width: number, x0: number, y0: number, size: number): number {
   const stride = width + 1;
   const x1 = x0 + size;
   const y1 = y0 + size;
