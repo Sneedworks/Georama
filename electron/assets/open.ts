@@ -57,18 +57,19 @@ function ioError(error: unknown): AssetFileError {
 }
 
 /**
- * Linux-only, read-only byte access beneath an explicitly authorized directory.
- * The explicit root may be a symlink; after canonicalizing it, verify the opened
- * directory identity. Every descendant is opened via a held parent descriptor
- * and O_NOFOLLOW, not by rechecking a joined pathname before a later open.
- * Descendant symlinks (even internal ones) are refused. O_NONBLOCK ensures FIFOs
- * cannot hang an open before fstat rejects non-regular files.
+ * Read-only byte access beneath an explicitly authorized directory.
  *
- * This is not a PNG/JSON validator or an IPC capability. Callers must validate
- * the returned bytes. In-place concurrent content changes are rejected when
- * size/mtime/ctime changes; no claim of an atomic snapshot against a privileged
- * actor restoring timestamps is made. Hardlinks are not distinguishable from
- * regular files, and mount/namespace manipulation is outside this boundary.
+ * Linux retains its original held-parent-descriptor /proc/self/fd traversal,
+ * O_NOFOLLOW and O_NONBLOCK semantics (including a symlinked explicit root).
+ * Windows delegates to a separate native helper that holds Win32 directory
+ * handles without FILE_SHARE_DELETE, opens each child without reparse traversal,
+ * checks opened-handle identity, and returns bytes only after verifying them.
+ * Missing/failed native helper => IO, never an unsafe JavaScript fallback.
+ *
+ * This is not an IPC capability or a PNG/JSON validator. Callers must validate
+ * the returned bytes. Neither backend promises atomic snapshots against actors
+ * modifying bytes while restoring all observed metadata. Hardlinks, privileged
+ * volume manipulation and filesystem filter behavior need separate review.
  */
 export async function readAssetFile(
   root: string,
