@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
-import { resolveDisplayEnv } from '../../scripts/display-env.mjs';
+import { launcherSignals, resolveDisplayEnv } from '../../scripts/display-env.mjs';
 import type { DisplayFileSystem } from '../../scripts/display-env.mjs';
 
 function filesystem(sockets: readonly string[]): DisplayFileSystem {
@@ -134,7 +134,7 @@ describe('launcher wiring', () => {
     vi.mocked(spawn).mockReturnValue(child as unknown as ReturnType<typeof spawn>);
     const argv = process.argv;
     const exitCode = process.exitCode;
-    const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+    const signals = launcherSignals(process.platform);
     const before = new Map(signals.map((signal) => [signal, process.listeners(signal)]));
     const args = ['.', '--flag=value with spaces', '$(literal; no shell)', '--ozone-platform=x11'];
     vi.stubEnv('WAYLAND_DISPLAY', '/does-not-exist/georama-test-socket');
@@ -142,6 +142,9 @@ describe('launcher wiring', () => {
     try {
       await import(new URL('../../scripts/run-electron.mjs', import.meta.url).href);
       expect(spawn).toHaveBeenCalledWith(expect.any(String), args, { env: expect.objectContaining({ WAYLAND_DISPLAY: '/does-not-exist/georama-test-socket' }), stdio: 'inherit' });
+      if (process.platform === 'win32') {
+        expect(process.listeners('SIGHUP')).toEqual(before.get('SIGHUP'));
+      }
       for (const signal of signals) {
         const handlers = process.listeners(signal).filter((handler) => !before.get(signal)?.includes(handler));
         expect(handlers).toHaveLength(1);
