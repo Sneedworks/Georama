@@ -19,7 +19,7 @@ The Windows path policy currently accepts only **normalized, fully drive-qualifi
 
 **Security limit:** Windows selected-file symlink-leaf checks use a preliminary `lstat`, which is not an atomic no-follow open. Unlike the Linux `O_NOFOLLOW` behavior, a concurrent local actor could replace the leaf between check and open. This API is for an explicitly selected trusted local path, and must not be exposed as an arbitrary renderer-chosen filesystem read capability. File reads still use a single held handle after opening, with size limits, bounded read loops and held-file metadata checks. Device/UNC paths are out of scope until separately reviewed.
 
-**Asset packs remain fail-closed on Windows.** `readAssetFile()` and `openPckFile()` still explicitly reject non-Linux platforms before filesystem I/O. Root detection does not grant a read capability. A subsequent security-reviewed Windows backend must preserve confined asset-root reads, reparse-point resistance, bounded reads and handle identity, without weakening the existing Linux backend.
+**Phase 2 (experimental): Windows asset file reads.** `readAssetFile()` can now use a native Windows helper to read files beneath an explicit root. `openPckFile()` remains Linux-only. A missing native helper fails closed rather than falling back to unsafe joined-path JavaScript reads. Windows asset loading does not work in packaged releases until the executable is bundled and authenticated; root discovery does not create a renderer IPC read capability.
 
 Windows Node 22 checks:
 
@@ -29,6 +29,25 @@ npx vitest run tests/unit/native-path.test.ts tests/unit/windows-selected-files.
 ```
 
 Linux regression checks are in `.github/workflows/windows-file-paths.yml` together with the Windows build and native-file tests. This phase does not claim that the Linux-specific full unit suite is green on Windows or that the application now loads Wonderdraft assets natively.
+
+
+## Native Windows secure asset reader (phase 2 — experimental)
+
+Windows user asset files now use an optional dedicated C++17 executable, not the Linux /proc/self/fd backend and not a JavaScript lstat/open preflight. The helper uses Win32 CreateFileW with FILE_FLAG_OPEN_REPARSE_POINT and keeps open directory/file handles without FILE_SHARE_DELETE. Each opened object is checked for a reparse point and its final DOS name is compared against its held parent. Only data verified through bounded reads and before/after metadata is emitted. Errors contain no user paths; Linux behavior remains unchanged.
+
+Build prerequisite: install Visual Studio 2022 C++ Build Tools (MSVC x64). The optional build script discovers Visual Studio using vswhere when not running under Developer PowerShell. Output resides in the git-ignored out/windows directory.
+
+Run on Windows (Node 22, after npm ci):
+
+~~~powershell
+node scripts/build-win-asset-helper.mjs
+npm run build
+npx vitest run tests/unit/windows-asset-reader.test.ts tests/unit/windows-asset-races.test.ts tests/unit/windows-selected-files.test.ts tests/unit/native-path.test.ts
+~~~
+
+The Windows tests require a compiled helper; missing helper is a failing test, not a skip. The CI workflow builds it and exercises real junctions, path refusal, size limits, handle release and concurrent directory replacement. Linux CI runs the original asset tests.
+
+Limits: this is an experimental security-reviewed design pending native CI results, not a proof across every Windows filesystem/filter driver. The backend spawns a process per asset, uses a developer checkout-relative executable location, and is not yet production-packaged. Root symlinks, UNC/network shares, native PCK archives, stronger packaging/authenticity checks and performance tuning are separate phases. Directly selected map/config files keep their separate security policy.
 
 ## Layout
 
