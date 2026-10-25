@@ -43,16 +43,28 @@ try {
     stderr = (stderr + String(part)).slice(-4096);
   });
 
+  // Remove early-exit listeners after readiness; otherwise a normal app close
+  // would reject the already-lost Promise.race branch as an unhandled rejection.
+  let failStartup;
   const earlyFailure = new Promise((_, reject) => {
-    child.once('error', reject);
-    child.once('exit', (code, signal) => {
-      reject(new Error(`Electron launcher exited before readiness (code=${code}, signal=${signal}): ${stderr}`));
-    });
+    failStartup = reject;
   });
-  const target = await Promise.race([
-    targetAt(port, (entry) => entry.type === 'page' && entry.url.startsWith('georama://app/'), child),
-    earlyFailure,
-  ]);
+  const onSpawnError = (error) => failStartup(error);
+  const onEarlyExit = (code, signal) => failStartup(
+    new Error(`Electron launcher exited before readiness (code=${code}, signal=${signal}): ${stderr}`),
+  );
+  child.once('error', onSpawnError);
+  child.once('exit', onEarlyExit);
+  let target;
+  try {
+    target = await Promise.race([
+      targetAt(port, (entry) => entry.type === 'page' && entry.url.startsWith('georama://app/'), child),
+      earlyFailure,
+    ]);
+  } finally {
+    child.off('error', onSpawnError);
+    child.off('exit', onEarlyExit);
+  }
   page = await connect(target.webSocketDebuggerUrl);
   await page.send('Runtime.enable');
 
