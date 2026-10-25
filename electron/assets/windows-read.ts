@@ -57,7 +57,7 @@ export function readWindowsAsset(
       chunks.push(chunk);
     });
     child.stderr?.on('data', (chunk: Buffer) => {
-      if (stderr.length <= 256) stderr += chunk.toString('utf8');
+      if (stderr.length < 256) stderr += chunk.toString('utf8').slice(0, 256 - stderr.length);
     });
     child.once('error', () => finish({ error: 'IO' }));
     child.once('close', (code) => {
