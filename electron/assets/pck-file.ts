@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import path from 'node:path';
+import { isNativeAbsolutePath } from '../native-path.ts';
 import { PCK_LIMITS, PckError, parsePckIndex, readPckEntry } from '../../src/core/assets/pck.ts';
 import type { PckIndex } from '../../src/core/assets/pck.ts';
 
@@ -44,13 +44,7 @@ function fail(code: PckFileErrorCode, message: string): never {
 function validateRoot(root: unknown): string {
   if (typeof root !== 'string') fail('PATH', 'Install root must be a normalized absolute directory');
   const value = root as string;
-  if (
-    value.length === 0 ||
-    value.length > 4096 ||
-    !value.startsWith('/') ||
-    /[\x00-\x1f\x7f-\x9f\p{Surrogate}]/u.test(value) ||
-    path.posix.normalize(value) !== value
-  ) {
+  if (!isNativeAbsolutePath(value)) {
     fail('PATH', 'Install root must be a normalized absolute directory');
   }
   return value;
