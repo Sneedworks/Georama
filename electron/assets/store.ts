@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { isNativeAbsolutePath } from '../native-path.ts';
 import { openPckFile } from './pck-file.ts';
 import type { PckFile } from './pck-file.ts';
@@ -74,9 +73,7 @@ function fail(code: AssetStoreErrorCode, message: string): never {
 function checkRoot(value: unknown): string {
   if (typeof value !== 'string') fail('ROOT', 'Asset root must be a normalized absolute directory');
   const root = value as string;
-  if (
-    !isNativeAbsolutePath(root)
-  ) {
+  if (!isNativeAbsolutePath(root)) {
     fail('ROOT', 'Asset root must be a normalized absolute directory');
   }
   return root;
