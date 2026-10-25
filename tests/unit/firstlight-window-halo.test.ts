@@ -109,8 +109,9 @@ function inputs(
 }
 
 describe('First Light window-halo extraction equivalence', () => {
-  it('matches a full-map pixel oracle on structured coasts, all edges and narrow maps', () => {
-    const shapes: readonly (readonly [number, number])[] = [[1, 1], [1, 12], [12, 1], [3, 3], [8, 5], [9, 11], [18, 15]];
+  const shapes: readonly (readonly [number, number])[] = [[1, 1], [1, 12], [12, 1], [3, 3], [8, 5], [9, 11], [18, 15]];
+
+  it.each(shapes)('matches the full-map pixel oracle on a %ix%i map (structured coasts, edges and narrow maps)', (w, h) => {
     const patterns: readonly ((x: number, y: number, w: number, h: number) => number)[] = [
       () => 0,
       () => 255,
@@ -120,8 +121,7 @@ describe('First Light window-halo extraction equivalence', () => {
       (x, y, w, h) => x === 0 || y === 0 || x === w - 1 || y === h - 1 ? 255 : 0,
       (x, y, w, h) => x === w - 1 && y === h - 1 ? 255 : 0,
     ];
-    for (const [w, h] of shapes) {
-      for (const pattern of patterns) {
+    for (const pattern of patterns) {
         for (const threshold of [0, 1, 128, 255]) {
           const common = inputs(w, h, threshold, (x, y) => pattern(x, y, w, h));
           const boxes: readonly (readonly [number, number, number, number])[] = [
@@ -137,7 +137,6 @@ describe('First Light window-halo extraction equivalence', () => {
             compare({ ...common, x0, y0, width, height });
           }
         }
-      }
     }
   });
 
