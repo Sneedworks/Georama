@@ -218,7 +218,10 @@ int wmain(int argc, wchar_t** argv) {
     const bool leaf = i + 1 == parts.size();
     const std::wstring expected = parent + (parent.back() == L'\\' ? L"" : L"\\") + parts[i];
     const DWORD access = leaf ? GENERIC_READ : FILE_READ_ATTRIBUTES;
-    held.emplace_back(CreateFileW(expected.c_str(), access, kShare, nullptr,
+    // The final file refuses WRITE sharing as well as DELETE, so a concurrent
+    // writer cannot keep mutating the bytes while we take a bounded snapshot.
+    const DWORD share = leaf ? FILE_SHARE_READ : kShare;
+    held.emplace_back(CreateFileW(expected.c_str(), access, share, nullptr,
       OPEN_EXISTING, kFlags, nullptr));
     if (!held.back()) return fail(openError());
     if (!attributes(held.back().value, tag)) return fail("IO");
