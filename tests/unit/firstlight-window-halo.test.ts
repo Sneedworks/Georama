@@ -122,26 +122,26 @@ describe('First Light window-halo extraction equivalence', () => {
       (x, y, w, h) => x === w - 1 && y === h - 1 ? 255 : 0,
     ];
     for (const pattern of patterns) {
-        for (const threshold of [0, 1, 128, 255]) {
-          const common = inputs(w, h, threshold, (x, y) => pattern(x, y, w, h));
-          const boxes: readonly (readonly [number, number, number, number])[] = [
-            [0, 0, w, h],
-            [0, 0, 1, 1],
-            [w - 1, h - 1, 1, 1],
-            [w - 1, 0, 1, h],
-            [0, h - 1, w, 1],
-            [Math.floor((w - 1) / 2), Math.floor((h - 1) / 2), 1, 1],
-            [Math.floor(w / 3), Math.floor(h / 3), w - Math.floor(w / 3), h - Math.floor(h / 3)],
-          ];
-          for (const [x0, y0, width, height] of boxes) {
-            compare({ ...common, x0, y0, width, height });
-          }
+      for (const threshold of [0, 1, 128, 255]) {
+        const common = inputs(w, h, threshold, (x, y) => pattern(x, y, w, h));
+        const boxes: readonly (readonly [number, number, number, number])[] = [
+          [0, 0, w, h],
+          [0, 0, 1, 1],
+          [w - 1, h - 1, 1, 1],
+          [w - 1, 0, 1, h],
+          [0, h - 1, w, 1],
+          [Math.floor((w - 1) / 2), Math.floor((h - 1) / 2), 1, 1],
+          [Math.floor(w / 3), Math.floor(h / 3), w - Math.floor(w / 3), h - Math.floor(h / 3)],
+        ];
+        for (const [x0, y0, width, height] of boxes) {
+          compare({ ...common, x0, y0, width, height });
         }
+      }
     }
   });
 
-  it('matches the full-map oracle on 250 deterministic arbitrary windows and alpha boundaries', () => {
-    let state = 0x6d2b79f5;
+  it.each([0, 1, 2, 3, 4])('matches the full-map oracle on randomized window batch %i', (batch) => {
+    let state = (0x6d2b79f5 + batch * 0x9e3779b9) >>> 0;
     const next = (): number => {
       state ^= state << 13;
       state ^= state >>> 17;
@@ -149,7 +149,7 @@ describe('First Light window-halo extraction equivalence', () => {
       return state >>> 0;
     };
     const alphas = [0, 1, 127, 128, 254, 255] as const;
-    for (let trial = 0; trial < 250; trial++) {
+    for (let trial = 0; trial < 50; trial++) {
       const mapW = 1 + next() % 29;
       const mapH = 1 + next() % 23;
       const threshold = alphas[next() % alphas.length];
