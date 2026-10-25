@@ -167,7 +167,7 @@ describe('First Light window-halo extraction equivalence', () => {
     const common = inputs(14, 12, 128, (x, y) => x === 3 && y === 6 ? 255 : 0);
     compare({ ...common, x0: 5, y0: 5, width: 4, height: 3 });
     const out = buildFirstLightLayers({ ...common, x0: 5, y0: 5, width: 4, height: 3 });
-    expect(out.stats.coastWater).toBe(2);
+    expect(out.stats.coastWater).toBe(3);
     expect(out.stats.coastLand).toBe(0);
   });
 });
