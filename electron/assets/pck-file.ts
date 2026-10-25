@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { isNativeAbsolutePath } from '../native-path.ts';
+import path from 'node:path';
 import { PCK_LIMITS, PckError, parsePckIndex, readPckEntry } from '../../src/core/assets/pck.ts';
 import type { PckIndex } from '../../src/core/assets/pck.ts';
 
@@ -44,7 +44,13 @@ function fail(code: PckFileErrorCode, message: string): never {
 function validateRoot(root: unknown): string {
   if (typeof root !== 'string') fail('PATH', 'Install root must be a normalized absolute directory');
   const value = root as string;
-  if (!isNativeAbsolutePath(value)) {
+  if (
+    value.length === 0 ||
+    value.length > 4096 ||
+    !value.startsWith('/') ||
+    /[\x00-\x1f\x7f-\x9f\p{Surrogate}]/u.test(value) ||
+    path.posix.normalize(value) !== value
+  ) {
     fail('PATH', 'Install root must be a normalized absolute directory');
   }
   return value;
@@ -268,8 +274,9 @@ class HeldPckFile implements PckFile {
 }
 
 export async function openPckFile(installRoot: string): Promise<PckFile> {
-  const root = validateRoot(installRoot);
+  // Fail closed until a Windows held-handle implementation is independently verified.
   if (process.platform !== 'linux') fail('IO', 'Archive reader requires Linux descriptor paths');
+  const root = validateRoot(installRoot);
   let rootHandle: FileHandle | undefined;
   let archiveHandle: FileHandle | undefined;
   const done = async (error: unknown): Promise<never> => {
