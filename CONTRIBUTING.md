@@ -5,7 +5,7 @@ Ge'orama is a Linux-native map editor for fantasy maps, with Wonderdraft compati
 Read these first:
 
 - [README.md](README.md): what the project is, and its status.
-- [docs/DEV.md](docs/DEV.md): setup, gates, layout and code conventions. This note does not repeat them.
+- [docs/DEV.md](docs/DEV.md): setup, gates, layout and code conventions. The gate table below summarises it; DEV.md is the reference.
 - [docs/SECURITY.md](docs/SECURITY.md): the threat model and the boundary checks.
 
 If this note and the code disagree, the code is right and the disagreement is worth reporting.
@@ -53,7 +53,7 @@ Also run the ones that match your change:
 
 1. Branch from `main`. Name the branch for the task, for example `fix/<topic>` or `task/<topic>`.
 2. Keep one concern per pull request. A behaviour change needs a test that fails without the change, and the test must fail for the reason its name gives.
-3. Write commit subjects as `type(scope): summary`, for example `fix(navigation): refuse other app documents before they commit`.
+3. Write commit subjects as `type(scope): summary`, for example `docs(contributing): explain the pull request template`.
 4. Fill in the pull request template. List the gates you ran with their summary lines, and list what you did not run under "Not observed". Attach screenshots for visible changes, or say they were not captured.
 5. Resolve conflicts with `main` before review starts. Say in the pull request what you changed.
 6. Once review has started, add commits instead of force-pushing the branch.
