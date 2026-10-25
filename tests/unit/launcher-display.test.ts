@@ -136,6 +136,7 @@ describe('launcher wiring', () => {
     const exitCode = process.exitCode;
     const signals = launcherSignals(process.platform);
     const before = new Map(signals.map((signal) => [signal, process.listeners(signal)]));
+    const priorHangupListeners = process.listeners('SIGHUP');
     const args = ['.', '--flag=value with spaces', '$(literal; no shell)', '--ozone-platform=x11'];
     vi.stubEnv('WAYLAND_DISPLAY', '/does-not-exist/georama-test-socket');
     process.argv = ['node', 'scripts/run-electron.mjs', ...args];
@@ -143,7 +144,7 @@ describe('launcher wiring', () => {
       await import(new URL('../../scripts/run-electron.mjs', import.meta.url).href);
       expect(spawn).toHaveBeenCalledWith(expect.any(String), args, { env: expect.objectContaining({ WAYLAND_DISPLAY: '/does-not-exist/georama-test-socket' }), stdio: 'inherit' });
       if (process.platform === 'win32') {
-        expect(process.listeners('SIGHUP')).toEqual(before.get('SIGHUP'));
+        expect(process.listeners('SIGHUP')).toEqual(priorHangupListeners);
       }
       for (const signal of signals) {
         const handlers = process.listeners(signal).filter((handler) => !before.get(signal)?.includes(handler));
