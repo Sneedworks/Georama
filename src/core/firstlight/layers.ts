@@ -131,7 +131,7 @@ function summedArea(flags: Uint8Array, width: number, height: number): Float64Ar
   return sat;
 }
 
-function rectSum(sat: Float64Array, width: number, x0: number, y0: number, size: number): number {
+function rectSum(sat: Uint32Array | Float64Array, width: number, x0: number, y0: number, size: number): number {
   const stride = width + 1;
   const x1 = x0 + size;
   const y1 = y0 + size;
@@ -147,9 +147,17 @@ function rectSum(sat: Float64Array, width: number, x0: number, y0: number, size:
  * Avoids the three full-map byte arrays previously needed for coastLand,
  * coastWater and their combined flags.
  */
-function coastSummedArea(land: Uint8Array, landSat: Float64Array, width: number, height: number): Float64Array {
+function coastSummedArea(
+  land: Uint8Array,
+  landSat: Uint32Array | Float64Array,
+  width: number,
+  height: number,
+): Uint32Array | Float64Array {
   const stride = width + 1;
-  const sat = new Float64Array(stride * (height + 1));
+  // Match the land SAT's exact count representation, including PR #18's
+  // Uint32 optimization and its Float64 fallback for very large rasters.
+  const length = stride * (height + 1);
+  const sat = landSat instanceof Uint32Array ? new Uint32Array(length) : new Float64Array(length);
   for (let y = 0; y < height; y++) {
     const top = Math.max(0, y - COAST_RADIUS);
     const bottom = Math.min(height, y + COAST_RADIUS + 1);
