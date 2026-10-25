@@ -56,7 +56,7 @@ bool badChar(wchar_t c) {
 bool deviceName(const std::wstring& name) {
   const size_t dot = name.find(L'.');
   std::wstring base = name.substr(0, dot);
-  std::transform(base.begin(), base.end(), base.begin(), [](wchar_t c) { return std::towupper(c); });
+  std::transform(base.begin(), base.end(), base.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towupper(c)); });
   if (base == L"CON" || base == L"PRN" || base == L"AUX" || base == L"NUL" ||
       base == L"CONIN$" || base == L"CONOUT$") return true;
   if (base.size() == 4 && (base.substr(0, 3) == L"COM" || base.substr(0, 3) == L"LPT")) {
@@ -91,7 +91,7 @@ bool validRoot(const std::wstring& root) {
     if (end == std::wstring::npos) break;
     start = end + 1;
   }
-  return start < root.size();
+  return start <= root.size();
 }
 
 bool validRelative(const std::wstring& relative, std::vector<std::wstring>& parts) {
@@ -140,7 +140,7 @@ bool nameOf(HANDLE h, std::wstring& result) {
   if (needed == 0 || needed > 32760) return false;
   std::vector<wchar_t> buffer(static_cast<size_t>(needed) + 1);
   const DWORD got = GetFinalPathNameByHandleW(h, buffer.data(), static_cast<DWORD>(buffer.size()), flags);
-  if (got == 0 || got >= buffer.size()) return false;
+  if (got == 0 || static_cast<size_t>(got) >= buffer.size()) return false;
   result.assign(buffer.data(), got);
   // Only a DOS-volume path can be compared to the authorized drive root.
   return result.size() >= 7 && result.compare(0, 4, L"\\\\?\\") == 0 &&
