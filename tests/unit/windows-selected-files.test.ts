@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { checkAbsolutePath, configFilePath, parseConfig, resolveRoots } from '../../electron/assets/config.ts';
 import { createAssetStore } from '../../electron/assets/store.ts';
+import { openPckFile } from '../../electron/assets/pck-file.ts';
 import { readSelectedConfigFile } from '../../electron/data/config-file.ts';
 import { readSelectedDataFile, SelectedFileError } from '../../electron/data/selected-file.ts';
 
@@ -74,6 +75,7 @@ describe.skipIf(process.platform !== 'win32')('native Windows file and root boun
     });
     expect(result.install).toEqual({ path: install, origin: 'conventional' });
     expect(result.userData).toEqual({ path: userData, origin: 'conventional' });
+    await expect(openPckFile(install)).rejects.toMatchObject({ code: 'IO' });
   });
 
   it('recognizes explicitly selected Windows roots without authorizing unsafe asset reads', async () => {
@@ -92,6 +94,14 @@ describe.skipIf(process.platform !== 'win32')('native Windows file and root boun
     } finally {
       await store.close();
     }
+  });
+
+  it('enforces selected-file byte limits before Windows filesystem access', async () => {
+    const lstat = vi.spyOn(fs, 'lstat');
+    const open = vi.spyOn(fs, 'open');
+    await expect(readSelectedDataFile('C:\\unused.json', -1)).rejects.toMatchObject({ code: 'LIMIT' });
+    expect(lstat).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('rejects an explicitly selected link leaf before opening it', async () => {
