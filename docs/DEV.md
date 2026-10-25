@@ -10,6 +10,26 @@ Gates run on Node 22: `.nvmrc` pins the version, and `typecheck`, `test`, `build
 
 The launcher uses Electron from the local dependency and resolves the display with the pure function `resolveDisplayEnv` in `scripts/display-env.mjs`. A set `WAYLAND_DISPLAY` is kept; if its socket exists (an absolute value is used as is, a relative one is joined to `XDG_RUNTIME_DIR`, or to `/run/user/<uid>` when that is unset) the launcher adds `--ozone-platform=wayland`, otherwise the existing display configuration passes through untouched. If it is absent, the lowest-numbered `wayland-<n>` socket is taken from the inherited `XDG_RUNTIME_DIR` first, then from `/run/user/<uid>`. A socket in the inherited directory (or with no `XDG_RUNTIME_DIR` set) sets `WAYLAND_DISPLAY=wayland-<n>` and the matching `XDG_RUNTIME_DIR`; a socket found only in the fallback directory while a different `XDG_RUNTIME_DIR` is set is passed as an absolute path and the inherited directory is left alone, so the launcher never emits a relative name that disagrees with the runtime directory. With no socket the environment is not changed and no flag is added. Extra CLI arguments and SIGINT, SIGTERM and SIGHUP are forwarded. The launcher is Linux-only: it calls `process.getuid()` and looks for Wayland sockets under `/run/user/<uid>`.
 
+
+## Native Windows selected files and path discovery (phase 1)
+
+This step intentionally separates **directly selected files** from **root-confined community asset packs**. On Windows, Georama can validate native `C:\\...` paths, read selected `.json` / `.wonderdraft_map` data through a held file handle with the existing byte caps and change-detection checks, parse Windows config paths, and discover configured or conventional Wonderdraft directories (`ProgramFiles`, `ProgramFiles(x86)`, `APPDATA`, user home). Root scanning accepts canonical drive paths with the existing depth and entry budgets.
+
+The Windows path policy currently accepts only **normalized, fully drive-qualified paths**. UNC shares, device/verbatim prefixes, drive-relative paths, alternate data streams, reserved device names, dot/dotdot segments, and trailing dot/space components are intentionally rejected. The POSIX path contract and Linux discovery remain unchanged.
+
+**Security limit:** Windows selected-file symlink-leaf checks use a preliminary `lstat`, which is not an atomic no-follow open. Unlike the Linux `O_NOFOLLOW` behavior, a concurrent local actor could replace the leaf between check and open. This API is for an explicitly selected trusted local path, and must not be exposed as an arbitrary renderer-chosen filesystem read capability. File reads still use a single held handle after opening, with size limits, bounded read loops and held-file metadata checks. Device/UNC paths are out of scope until separately reviewed.
+
+**Asset packs remain fail-closed on Windows.** `readAssetFile()` and `openPckFile()` still explicitly reject non-Linux platforms before filesystem I/O. Root detection does not grant a read capability. A subsequent security-reviewed Windows backend must preserve confined asset-root reads, reparse-point resistance, bounded reads and handle identity, without weakening the existing Linux backend.
+
+Windows Node 22 checks:
+
+```powershell
+npm run build
+npx vitest run tests/unit/native-path.test.ts tests/unit/windows-selected-files.test.ts
+```
+
+Linux regression checks are in `.github/workflows/windows-file-paths.yml` together with the Windows build and native-file tests. This phase does not claim that the Linux-specific full unit suite is green on Windows or that the application now loads Wonderdraft assets natively.
+
 ## Layout
 
 - `electron/` — sandboxed application shell, custom protocol, narrow IPC, preload bridge.
