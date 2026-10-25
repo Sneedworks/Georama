@@ -138,6 +138,41 @@ function rectSum(sat: Float64Array, width: number, x0: number, y0: number, size:
   return sat[y1 * stride + x1] - sat[y0 * stride + x1] - sat[y1 * stride + x0] + sat[y0 * stride + x0];
 }
 
+/**
+ * Build the coastline summed-area table directly from the land table. A texel
+ * touches the opposite class iff its clipped Chebyshev-radius neighborhood is
+ * not entirely land (for land), or contains any land (for water). Including
+ * the center does not alter this test.
+ *
+ * Avoids the three full-map byte arrays previously needed for coastLand,
+ * coastWater and their combined flags.
+ */
+function coastSummedArea(land: Uint8Array, landSat: Float64Array, width: number, height: number): Float64Array {
+  const stride = width + 1;
+  const sat = new Float64Array(stride * (height + 1));
+  for (let y = 0; y < height; y++) {
+    const top = Math.max(0, y - COAST_RADIUS);
+    const bottom = Math.min(height, y + COAST_RADIUS + 1);
+    const topRow = top * stride;
+    const bottomRow = bottom * stride;
+    const previousRow = y * stride;
+    const currentRow = (y + 1) * stride;
+    let rowSum = 0;
+    for (let x = 0; x < width; x++) {
+      const left = Math.max(0, x - COAST_RADIUS);
+      const right = Math.min(width, x + COAST_RADIUS + 1);
+      const nearbyLand =
+        landSat[bottomRow + right] - landSat[topRow + right] -
+        landSat[bottomRow + left] + landSat[topRow + left];
+      const isLand = land[y * width + x] === 1;
+      const allLand = nearbyLand === (right - left) * (bottom - top);
+      if (isLand ? !allLand : nearbyLand !== 0) rowSum++;
+      sat[currentRow + x + 1] = sat[previousRow + x + 1] + rowSum;
+    }
+  }
+  return sat;
+}
+
 export function selectWindow(
   mask: RgbaRaster,
   threshold: number,
@@ -150,13 +185,8 @@ export function selectWindow(
   assertExtent(stride, 'stride');
   const { width, height } = mask;
   const land = landMask(mask, threshold);
-  const { coastLand, coastWater } = coastFlags(land, width, height);
   const landSat = summedArea(land, width, height);
-  const coastSat = summedArea(
-    coastLand.map((v, i) => v + coastWater[i]),
-    width,
-    height,
-  );
+  const coastSat = coastSummedArea(land, landSat, width, height);
   const area = size * size;
   let best: WindowPick | null = null;
   for (let y0 = 0; y0 + size <= height; y0 += stride) {
