@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { isNativeAbsolutePath } from '../native-path.ts';
+import path from 'node:path';
 
 export const ASSET_FILE_LIMITS = Object.freeze({
   maxBytes: 64 * 1024 * 1024,
@@ -25,7 +25,8 @@ const BAD_CHAR = /[\x00-\x1f\x7f-\x9f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufef
 const DATA_SUFFIXES = Object.freeze(['.png', '.wonderdraft_image', '.wonderdraft_symbols', '.wonderdraft_theme']);
 
 function validate(root: string, relative: string, maxBytes: number): string[] {
-  if (!isNativeAbsolutePath(root, process.platform, ASSET_FILE_LIMITS.maxPathChars)) {
+  if (typeof root !== 'string' || root.length === 0 || root.length > ASSET_FILE_LIMITS.maxPathChars ||
+      !root.startsWith('/') || /[\x00-\x1f\x7f-\x9f\p{Surrogate}]/u.test(root) || path.posix.normalize(root) !== root) {
     throw new AssetFileError('PATH', 'Asset root must be a normalized absolute directory');
   }
   if (typeof relative !== 'string' || relative.length === 0 || relative.length > ASSET_FILE_LIMITS.maxPathChars ||
@@ -74,8 +75,9 @@ export async function readAssetFile(
   relative: string,
   maxBytes: number = ASSET_FILE_LIMITS.maxBytes,
 ): Promise<Uint8Array> {
-  const parts = validate(root, relative, maxBytes);
+  // No Windows descriptor-confined backend yet; do not allow any filesystem I/O.
   if (process.platform !== 'linux') throw new AssetFileError('IO', 'Asset reader requires Linux descriptor paths');
+  const parts = validate(root, relative, maxBytes);
   const handles: FileHandle[] = [];
   let result: Uint8Array | undefined;
   let failure: AssetFileError | undefined;
