@@ -9,8 +9,8 @@ describe('unit test platform selection', () => {
   it('lists only existing unit files and never assigns a file to both native platforms', async () => {
     const directory = fileURLToPath(new URL('./', import.meta.url));
     const files = new Set((await readdir(directory)).filter((name) => name.endsWith('.test.ts')));
-    const linuxOnly = new Set(linuxOnlyUnitTests);
-    const windowsOnly = new Set(windowsOnlyUnitTests);
+    const linuxOnly = new Set<string>(linuxOnlyUnitTests);
+    const windowsOnly = new Set<string>(windowsOnlyUnitTests);
     expect(linuxOnly.size).toBe(linuxOnlyUnitTests.length);
     expect(windowsOnly.size).toBe(windowsOnlyUnitTests.length);
     for (const file of [...linuxOnly, ...windowsOnly]) {
