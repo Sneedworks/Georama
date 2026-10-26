@@ -122,8 +122,10 @@ describe('portable config JSON parsing', () => {
     } catch (e) {
       expect(e).toMatchObject({ code: 'TOO_LARGE' });
     }
-    const pad = 'p'.repeat(65_536 - 11);
-    expect(parseConfig(`{"pad":"${pad}"}`)).toEqual({});
+    const pad = 'p'.repeat(65_536 - Buffer.byteLength('{"pad":""}'));
+    const exact = JSON.stringify({ pad });
+    expect(Buffer.byteLength(exact, 'utf8')).toBe(65_536);
+    expect(parseConfig(exact)).toEqual({});
   });
 
   it('rejects non-string source input as SYNTAX', () => {
