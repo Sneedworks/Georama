@@ -274,6 +274,22 @@ function readRecordWithLookup(
   path: string,
   byKey: ReadonlyMap<string, FieldDef>,
 ): Record<string, unknown> {
+  // Canonical records need neither a duplicate-key Set nor temporary layout arrays.
+  if (dict.entries.length === table.length && byKey.size === table.length) {
+    let canonical = true;
+    for (let i = 0; i < table.length; i++) {
+      if (dict.entries[i][0] !== table[i].key) { canonical = false; break; }
+    }
+    if (canonical) {
+      const values: Record<string, unknown> = {};
+      for (let i = 0; i < table.length; i++) {
+        const def = table[i];
+        values[def.prop] = def.read(dict.entries[i][1], join(path, def.key));
+      }
+      if (dict.shared) values['shared'] = true;
+      return values;
+    }
+  }
   const seen = new Set<string>();
   const values: Record<string, unknown> = {};
   const order: string[] = [];
