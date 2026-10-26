@@ -1,6 +1,6 @@
 import { dialog, ipcMain } from 'electron';
 import type { BrowserWindow, WebContents, IpcMainInvokeEvent } from 'electron';
-import { stat } from 'node:fs/promises';
+import { lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { IPC, type AssetImageReply } from '../src/shared/ipc.ts';
 import { isNativeAbsolutePath } from './native-path.ts';
@@ -44,7 +44,7 @@ export function registerAssetIpc(
       if (result.canceled || result.filePaths.length !== 1) return false;
       const root = result.filePaths[0];
       if (!isNativeAbsolutePath(root)) return false;
-      if (!(await stat(path.join(root, 'assets'))).isDirectory()) return false;
+      const rootInfo = await lstat(root);\n      const assetsInfo = await lstat(path.join(root, 'assets'));\n      if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() ||\n          !assetsInfo.isDirectory() || assetsInfo.isSymbolicLink()) return false;
       trusted(event);
       const next = await createAssetStore({ userDataRoot: root });
       trusted(event);
