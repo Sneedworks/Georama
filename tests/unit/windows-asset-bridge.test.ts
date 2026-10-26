@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -18,7 +19,7 @@ function childProcess() {
   return child;
 }
 
-beforeAll(() => configureWindowsAssetHelper(new URL('../../', import.meta.url).pathname));
+beforeAll(() => configureWindowsAssetHelper(fileURLToPath(new URL('../../', import.meta.url))));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 
 describe('bounded native Windows process bridge (portable mocks)', () => {
