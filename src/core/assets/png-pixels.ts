@@ -473,6 +473,8 @@ export function decodePngRgba8(
     const rowStart = y * (stride + 1);
     const filter = out[rowStart];
     if (filter > 4) fail('filter', 'Bad filter type');
+    // Filter 0 stores the scanline bytes verbatim; no reconstruction is needed.
+    if (filter === 0) continue;
     const upStart = y === 0 ? 0 : rowStart - stride - 1;
     for (let i = 0; i < stride; i++) {
       const raw = out[rowStart + 1 + i];
