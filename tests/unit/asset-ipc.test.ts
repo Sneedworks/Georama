@@ -26,7 +26,9 @@ function fixture() {
 function handlers() {
   const f = fixture();
   registerAssetIpc(() => f.contents as never, () => ({}) as never, editor);
-  const handlers = new Map<string, Function>(mocked.handle.mock.calls);
+  const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>(
+    mocked.handle.mock.calls.map(([name, handler]) => [name, handler] as [string, (...args: unknown[]) => Promise<unknown>]),
+  );
   return { ...f, pick: handlers.get(IPC.selectUserAssets)!, read: handlers.get(IPC.readUserImage)! };
 }
 const info = { isDirectory: () => true, isSymbolicLink: () => false };
