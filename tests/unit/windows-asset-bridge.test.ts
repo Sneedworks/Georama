@@ -1,9 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
-import { readWindowsAsset } from '../../electron/assets/windows-read.ts';
+import { configureWindowsAssetHelper, readWindowsAsset } from '../../electron/assets/windows-read.ts';
 
 function fakeChild() {
   return Object.assign(new EventEmitter(), {
@@ -18,6 +18,7 @@ function childProcess() {
   return child;
 }
 
+beforeAll(() => configureWindowsAssetHelper(new URL('../../', import.meta.url).pathname));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 
 describe('bounded native Windows process bridge (portable mocks)', () => {
