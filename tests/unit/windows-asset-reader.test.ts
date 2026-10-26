@@ -48,7 +48,13 @@ describe.skipIf(process.platform !== 'win32')('native Windows scoped asset file 
     const bytes = Buffer.alloc(2 * 1024 * 1024 + 123);
     for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 71 + (i >>> 10)) & 255;
     await fs.writeFile(path.join(root, 'pack', 'many.png'), bytes);
-    expect(await readAssetFile(root, 'pack/many.png', bytes.length)).toEqual(bytes);
+    const actual = await readAssetFile(root, 'pack/many.png', bytes.length);
+    expect(actual).toBeInstanceOf(Uint8Array);
+    expect(Buffer.isBuffer(actual)).toBe(false);
+    expect(actual.byteLength).toBe(bytes.byteLength);
+    // Compare all bytes, not the distinct Uint8Array and Node Buffer prototypes.
+    // Buffer.compare accepts either type and avoids a multi-megabyte assertion diff.
+    expect(Buffer.compare(actual, bytes)).toBe(0);
   });
 
   it('refuses unsupported paths, missing files, directories and oversized data', async () => {
