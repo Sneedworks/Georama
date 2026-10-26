@@ -100,6 +100,13 @@ describe.skipIf(process.platform !== 'win32')('native Windows scoped asset file 
     await fails(path.join(alias, 'root'), 'pack/leaf.png', 'PATH');
   });
 
+  it('rejects hardlinks to files also named outside the authorized root', async () => {
+    const { root, outside } = await fixture();
+    await fs.link(path.join(outside, 'leaf.png'), path.join(root, 'pack', 'linked.png'));
+    await fails(root, 'pack/linked.png', 'PATH');
+    expect(await fs.readFile(path.join(outside, 'leaf.png'), 'utf8')).toBe('OUTSIDE-SECRET');
+  });
+
   it('denies final file links where symlink creation is supported', async () => {
     const { root, outside } = await fixture();
     const link = path.join(root, 'pack', 'link.png');
