@@ -108,4 +108,45 @@ describe('user asset IPC capability', () => {
     expect(await x.pick(x.event)).toBe(true);
     expect(await x.read(x.event, 'symbol', 'user://assets/a/tree')).toEqual({ ok: false, code: 'UNAVAILABLE' });
   });
+  it('rejects overlapping native folder dialogs', async () => {
+    const x = handlers();
+    let finish!: (value: unknown) => void;
+    mocked.choose.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const waiting = x.pick(x.event);
+    expect(await x.pick(x.event)).toBe(false);
+    expect(mocked.choose).toHaveBeenCalledTimes(1);
+    finish({ canceled: true, filePaths: [] });
+    expect(await waiting).toBe(false);
+  });
+
+  it('never delivers bytes from a root replaced during an in-flight read', async () => {
+    const x = handlers();
+    let complete!: (value: unknown) => void;
+    const firstRead = new Promise((resolve) => { complete = resolve; });
+    const first = { readImage: vi.fn().mockReturnValue(firstRead), close: vi.fn().mockResolvedValue(undefined) };
+    const second = { readImage: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
+    mocked.choose.mockResolvedValue({ canceled: false, filePaths: [root] });
+    mocked.makeStore.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    expect(await x.pick(x.event)).toBe(true);
+    const pending = x.read(x.event, 'symbol', 'user://assets/a/tree');
+    expect(await x.pick(x.event)).toBe(true);
+    complete({ bytes: new Uint8Array([1, 2, 3]) });
+    expect(await pending).toEqual({ ok: false, code: 'UNAVAILABLE' });
+    expect(first.close).toHaveBeenCalledOnce();
+  });
+
+  it('never delivers in-flight bytes after the calling frame navigates away', async () => {
+    const x = handlers();
+    let complete!: (value: unknown) => void;
+    const waiting = new Promise((resolve) => { complete = resolve; });
+    const store = { readImage: vi.fn().mockReturnValue(waiting), close: vi.fn() };
+    mocked.choose.mockResolvedValue({ canceled: false, filePaths: [root] });
+    mocked.makeStore.mockResolvedValue(store);
+    expect(await x.pick(x.event)).toBe(true);
+    const pending = x.read(x.event, 'symbol', 'user://assets/a/tree');
+    x.frame.url = 'https://untrusted.example/';
+    complete({ bytes: new Uint8Array([99]) });
+    expect(await pending).toEqual({ ok: false, code: 'UNAVAILABLE' });
+  });
+
 });
