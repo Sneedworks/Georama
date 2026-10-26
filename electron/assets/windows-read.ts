@@ -20,13 +20,28 @@ const MESSAGES = new Set(['PATH', 'LIMIT', 'MISSING', 'TYPE', 'IO']);
 // Enforce a process-wide budget here as well, and release only when the child
 // has closed (not when its timeout or output cap first fires).
 let activeHelpers = 0;
+let configuredHelper: string | undefined;
+
+/**
+ * Bind the helper to the application installation root, never to process.cwd().
+ * Call once from trusted Electron main startup, before registering asset IPC.
+ * Tests may supply their own checkout root, also independently of cwd.
+ * Packaged builds remain fail-closed until the helper is installed there.
+ */
+export function configureWindowsAssetHelper(appRoot: string): void {
+  if (configuredHelper !== undefined) throw new Error('Windows helper already configured');
+  if (typeof appRoot !== 'string' || !path.isAbsolute(appRoot)) {
+    throw new Error('Windows helper requires an absolute application root');
+  }
+  configuredHelper = path.join(appRoot, 'out', 'windows', 'georama-win-asset-read.exe');
+}
 
 /**
  * A dedicated Windows process opens/checks each HANDLE before emitting bytes.
  * No JavaScript realpath/lstat/exists preflight is used for authorization.
  * A missing helper or invalid response fails closed; no JS read fallback.
  *
- * Development builds resolve the executable relative to the checkout CWD.
+ * The executable location is fixed at startup from the trusted app directory.
  * Production packaging and helper authentication are NOT implemented here.
  */
 export function readWindowsAsset(
@@ -42,7 +57,8 @@ export function readWindowsAsset(
     return Promise.resolve({ error: 'BUSY' });
   }
 
-  const binary = path.resolve(process.cwd(), 'out', 'windows', 'georama-win-asset-read.exe');
+  const binary = configuredHelper;
+  if (binary === undefined) return Promise.resolve({ error: 'IO' });
   activeHelpers += 1;
   let child: ReturnType<typeof spawn>;
   try {
