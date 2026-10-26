@@ -11,7 +11,7 @@ export const ASSET_FILE_LIMITS = Object.freeze({
   maxSegmentBytes: 255,
 });
 
-export type AssetFileErrorCode = 'PATH' | 'EXTENSION' | 'LIMIT' | 'MISSING' | 'TYPE' | 'IO';
+export type AssetFileErrorCode = 'PATH' | 'EXTENSION' | 'LIMIT' | 'MISSING' | 'TYPE' | 'IO' | 'BUSY';
 
 export class AssetFileError extends Error {
   readonly code: AssetFileErrorCode;
