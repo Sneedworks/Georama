@@ -14,43 +14,43 @@ To take an item, follow [CONTRACT.md section 5](CONTRACT.md#5-how-a-change-moves
 
 ### A1. Electron 44.9.3 patch (pull request #25)
 
-- **Status:** ready for review. The change touches two files, `package.json` and `package-lock.json`. The lock entry's integrity value matches the npm registry value for 44.9.3.
-- **Why:** 44.7.0 is no longer the latest patch of its line, and only the latest patch receives fixes. Advisory GHSA-jr5w-w6x2-84p9 (CVE-2026-115570, high, CVSS 7.4) affects 44.7.0 and is fixed in 44.9.1. The advisory database lists no advisory for 44.9.3. The advisory concerns apps that make TLS connections over a network an attacker can intercept. The app makes no network connections by design ([SECURITY.md](SECURITY.md)), so the exposure is low, and the update is still due.
-- **Steps:** check the lock entry against the registry; run the Node gates on the merged result; run the hidden smoke and boundary checks.
+- **Status:** not ready to merge. The bump changes `package.json` and `package-lock.json` only. On 2026-10-26 the hidden smoke test failed on it, because the test asserted the old version string (44.7.0). The boundary probe asserts the same string. The fix makes both assertions read the pinned version. It is not yet in the public repository, and merge waits for the hidden runs on 44.9.3 to pass.
+- **Why:** 44.7.0 is no longer the latest patch of its line. [Electron's support policy](https://www.electronjs.org/docs/latest/tutorial/electron-timelines) supports the latest three stable lines, and only the latest patch of each line gets fixes. Advisory GHSA-jr5w-w6x2-84p9 (CVE-2026-115570, severity high, CVSS 7.4, published 2026-10-23) affects versions from 44.0.0-alpha.1 up to 44.9.1, which includes 44.7.0, and is fixed in 44.9.1. The advisory says an app is affected only if it makes TLS connections over a network an attacker can intercept, and that apps which make no network connections are not affected. [SECURITY.md](SECURITY.md) says the app has no legitimate network use. The exposure is therefore low, and the update is still due. No advisory range in the GitHub advisory database covers 44.9.3 (checked 2026-10-26).
+- **Steps:** check the lock entry's integrity value against the npm registry (checked 2026-10-26: the values match for 44.9.3); make the two version assertions read the pinned dependency; run the Node gates on the merged result; run the hidden smoke and boundary checks on 44.9.3.
 - **Done when:** the Node gates pass on the merged result, and the hidden smoke and boundary checks pass on 44.9.3. **Window.**
 
 ### A2. Electron 45 migration
 
-- **Status:** planned. **Owner decision** on timing. Electron 45.0.0 is the latest stable release (published 2026-10-21). It is a new major line, so it needs its own branch and its own checks.
-- **Breaking changes that matter here**, from the 45.0.0 release notes: sandboxed preload scripts lose the `events`, `timers` and `url` modules and the `Buffer`, `setImmediate` and `clearImmediate` globals; `contentTracing.enableHeapProfiling()` is removed; `app.setLoginItemSettings()` no longer accepts `openAsHidden`; the synchronous `safeStorage` methods are deprecated. A search of the current `electron/` and `src/` code found none of these APIs. A search is not a test. The runs below are.
-- **Steps:** read the full 45.0.0 breaking-change list; upgrade on a branch; search the preload and the renderer for Node globals and modules the sandbox no longer provides; run the Node gates, the hidden smoke, the boundary check and the GPU check. **Window.**
+- **Status:** planned. **Owner decision** on timing. Electron 45.0.0 is stable (released 2026-10-21, per the [Electron release list](https://github.com/electron/electron/releases)). It is a new major line, so it needs its own branch and its own checks.
+- **Known changes:** the [breaking-changes page](https://www.electronjs.org/docs/latest/breaking-changes) is one list without per-release headings, so read all of it and treat each item that names Electron 45 as in scope. Two items there apply to this repository and need checking: `app.setLoginItemSettings()` no longer accepts `openAsHidden` (the page dates this to Electron 44), and the npm package no longer downloads the binary in a `postinstall` script (our 44.9.3 package has no install script). A search of `electron/` and `src/` found no use of `setLoginItemSettings`, `openAsHidden` or `getLoginItemSettings` (checked 2026-10-26). A search is not a test; the runs below are.
+- **Steps:** read the whole breaking-changes page and list each item that applies here; upgrade on a branch; search the preload and the renderer for every API the page names; run the Node gates, the hidden smoke, the boundary check and the GPU check on 45.x. **Window.**
 - **Done when:** every gate passes on 45.x, and each run names its Electron version.
 
-### A3. `fitView` and `oneToOne` return non-finite translations (good first task)
+### A3. `fitView` returns non-finite translations (good first task)
 
 - **Status:** open.
-- **Evidence:** on the current code, with the view width and height both at the largest finite double, `fitView(1.7191700431418136e308, 1, Number.MAX_VALUE, Number.MAX_VALUE)` returns `ok: true` with `tx: -Infinity`. In a probe of 300,000 map sizes chosen so that `mapW × scale` rounds past the largest double, 27,280 calls returned `ok: true` with a non-finite translation. The same probe found no non-finite result from `oneToOne`. Pull request #17 added finite checks to `screenToMap`, `zoomAt` and `panBy`, but not to `fitView` or `oneToOne`.
+- **Evidence:** a probe in Node ran `fitView` on 300,000 extreme width cases, with the view width and height both at the largest finite double. For 27,280 of them the call returned `ok: true` with `tx` equal to `-Infinity`. For example, `fitView(1.7191700431418136e308, 1, Number.MAX_VALUE, Number.MAX_VALUE)` returns `ok: true` with `tx: -Infinity`. A probe of the height term found the same for `ty`, in 27,280 of 300,000 cases. The probe is not in the repository; the regression test in step 1 is the reproduction. No non-finite translation came from `oneToOne` in 300,000 extreme inputs. Pull request #17 added finite checks to `screenToMap`, `zoomAt` and `panBy`, but not to `fitView`.
 - **Files:** `src/renderer/render/view/viewport.ts`, `tests/unit/render-view-viewport.test.ts`.
 - **Steps, test first:**
   1. Add a test that calls `fitView` with the inputs above and asserts that the result is not `ok: true` with a non-finite translation. Run it on `main`; it must fail.
-  2. In `fitView`, compute `tx` and `ty`, and return `{ ok: false, code: 'LIMIT', message }` when either is not finite. Follow the pattern of pull request #17.
+  2. In `fitView`, compute `tx` and `ty`, and return a verdict with `ok: false` and code `LIMIT` when either is not finite. Follow the pattern of pull request #17.
   3. For `oneToOne`, add a regression test on extreme inputs. Add a guard only if a failing input exists.
 - **Done when:** the new test fails before the change and passes after it, the existing viewport tests still pass, and the Node gates pass.
 
 ### A4. Hardening the Electron asset reads (issue #5)
 
-- **Status:** open, partly fixed. Pull request #8 added an aggregate read budget (64 MiB, 16 concurrent reads) and descriptor-bound reads. The owner's comments on issue #5 list what remains.
-- **Remaining work that can be tested on Linux:** a read budget measured by the method in the issue (its criterion 5), with the method and the numbers in the pull request; tests that reproduce the filesystem race described in the issue's finding B.
-- **Needs other platforms:** the boundary suite on macOS and Windows (criterion 6). Windows work is an **owner decision** (item A5).
+- **Status:** open, partly fixed. The public code limits asset reads to 64 MiB (`electron/assets/open.ts`) and bounds the directory scan (`electron/assets/config.ts`). The owner's comments on issue #5 list what remains.
+- **Remaining work that can be tested on Linux:** the parent-directory swap described in the issue (its criterion 2), and a read budget measured by a stated method, with the method and the numbers in the pull request.
+- **Needs other platforms:** the macOS and Windows investigations listed in the issue, and the mount-alias question. Windows work is an **owner decision** (item A5).
 
 ### A5. Windows support
 
-- **Status:** held. **Owner decision.** Pull requests #22, #23 and #24 add a Windows launcher, Windows file paths and a native asset reader. Drafts #26 to #28 stack on them. None is merged until the owner decides whether Windows is a supported direction.
-- **Why the hold matters for security:** the Windows CI workflows would run pull-request code on a Windows runner. One of them sends its jobs to a self-hosted runner when a repository variable is set, and that is unsafe for code from forks. Any CI needs a decision first.
+- **Status:** held. **Owner decision.** Pull requests #22, #23 and #24 add a Windows launcher, Windows file paths and a native asset reader. Drafts #26 to #28 extend the same work. None is merged until the owner decides whether Windows is a supported direction.
+- **Why the hold matters for security:** the Windows workflows run on a self-hosted runner when the repository variable `GEORAMA_WINDOWS_RUNNER_JSON` is set (the `runs-on` line in `.github/workflows/`). A self-hosted runner should not run code from forks on a public repository. Any CI needs a decision first.
 
 ### A6. Offline shader check (good first task)
 
-- **Status:** open. Shader text lives in TypeScript sources under `src/renderer/render/`, and nothing compiles it before a GPU run.
+- **Status:** open. Shader text lives in TypeScript sources under `src/renderer/render/`, and nothing in the repository compiles it before a GPU run.
 - **Plan:** add a script that extracts each GLSL source string under `src/renderer/` and compiles it with `glslangValidator`. It fails on any compile error. Add a canary, a shader with a deliberate error, and check that the script fails on it. The script exits non-zero with a clear message if `glslangValidator` is missing; document how to install it in [DEV.md](DEV.md). Add it as a `package.json` script (`check:glsl`). Do not add it to `npm test`, because it needs an external binary.
 - **Done when:** the script passes on `main`, fails on the canary, and is documented.
 
@@ -161,5 +161,5 @@ Approved order: D1, D2, D3, D4, D5, D6, D7. D8 is standing. Each item starts wit
 
 - Windows as a supported direction (A5).
 - The timing of the Electron 45 migration (A2).
-- Private vulnerability reporting for the repository (contract section 8).
-- Merging pull requests #25, #29, #30, #31 and #32, one at a time.
+- Private vulnerability reporting for the repository (contract section 8). It is off today.
+- Merging pull requests #25, #29, #30, #31 and #32, one at a time. #25 waits for its hidden runs (A1).
