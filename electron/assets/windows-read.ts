@@ -88,7 +88,12 @@ export function readWindowsAsset(
       // Wait for streams to close before resolving where possible. If a child
       // remains unresponsive, resolve IO/LIMIT but keep its concurrency slot
       // reserved until close: never start more children against a stuck one.
-      terminationGrace = setTimeout(() => finish({ error }), WINDOWS_ASSET_HELPER_LIMITS.terminationGraceMs);
+      if (!settled) {
+        terminationGrace = setTimeout(
+          () => finish({ error }),
+          WINDOWS_ASSET_HELPER_LIMITS.terminationGraceMs,
+        );
+      }
     }
 
     const watchdog = setTimeout(() => terminate('IO'), WINDOWS_ASSET_HELPER_LIMITS.timeoutMs);
