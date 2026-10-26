@@ -93,10 +93,13 @@ describe.skipIf(process.platform !== 'win32')('native Windows scoped asset file 
 
   it('helper itself rejects traversal without emitting bytes or paths', async () => {
     const { root } = await fixture();
-    for (const [relative, code] of [
-      ['../outside/leaf.png', 'PATH'], ['pack/CON.png', 'PATH'], ['pack/missing.png', 'MISSING'],
+    for (const [selectedRoot, relative, code] of [
+      [root, '../outside/leaf.png', 'PATH'],
+      [root, 'pack/CON.png', 'PATH'],
+      [root, 'pack/missing.png', 'MISSING'],
+      [root + path.sep, 'pack/leaf.png', 'PATH'],
     ] as const) {
-      const run = spawnSync(helper, [root, relative, '16'], { encoding: 'utf8', windowsHide: true });
+      const run = spawnSync(helper, [selectedRoot, relative, '16'], { encoding: 'utf8', windowsHide: true });
       expect(run.status).not.toBe(0);
       expect(run.stdout).toBe('');
       expect(run.stderr.trim()).toBe(code);
