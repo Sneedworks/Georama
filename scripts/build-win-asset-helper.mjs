@@ -78,7 +78,10 @@ if (clOnPath && hasMsvcBuildEnvironment(process.env)) {
   // Run vcvars64.bat and cl.exe in ONE cmd process; only that child inherits
   // the SDK paths set by vcvars. A previous bare where.exe check misses this.
   const quote = (value) => '"' + value.replaceAll('"', '""') + '"';
-  const command = 'call ' + quote(vcvars) + ' >nul && cl ' + args.map(quote).join(' ');
+  const verify = path.join(root, 'scripts', 'check-msvc-environment.mjs');
+  const command = 'call ' + quote(vcvars) + ' >nul && ' +
+    quote(process.execPath) + ' ' + quote(verify) +
+    ' && cl ' + args.map(quote).join(' ');
   run('cmd.exe', ['/d', '/s', '/c', command]);
 }
 if (!existsSync(exe)) failToolchain('Compiler completed but emitted no helper executable.');
