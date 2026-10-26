@@ -3,16 +3,24 @@ name: Launcher portability
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'feat/windows-*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Do not spend runner minutes on superseded feature-branch commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   launcher:
     name: Launcher on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    # Optional organization/repository Actions variable:
+    # GEORAMA_WINDOWS_RUNNER_JSON = {"group":"your-group","labels":["self-hosted","Windows","X64"]}
+    # Unset => GitHub-hosted windows-latest. Ubuntu always uses ubuntu-latest.
+    runs-on: ${{ fromJSON(matrix.os == 'windows-latest' && (vars.GEORAMA_WINDOWS_RUNNER_JSON || '"windows-latest"') || '"ubuntu-latest"') }}
     strategy:
       fail-fast: false
       matrix:
