@@ -3,11 +3,16 @@ name: Native Windows asset handles
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'feat/windows-*']
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Do not spend runner minutes on superseded feature-branch commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linux-regression:
@@ -29,7 +34,9 @@ jobs:
           tests/unit/assets-store.test.ts
 
   windows-native:
-    runs-on: windows-latest
+    # Optional organization/repository Actions variable with runner JSON.
+    # Defaults to GitHub-hosted Windows when no org runner is configured.
+    runs-on: ${{ fromJSON(vars.GEORAMA_WINDOWS_RUNNER_JSON || '"windows-latest"') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
