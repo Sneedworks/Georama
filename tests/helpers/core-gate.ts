@@ -33,7 +33,9 @@ export async function portableSourceFiles(): Promise<string[]> {
 export function runTsc(config: string, listFilesOnly = false) {
   const args = ['-p', config, '--noEmit', '--pretty', 'false'];
   if (listFilesOnly) args.push('--listFilesOnly');
-  const result = spawnSync(path.join(projectRoot, 'node_modules/.bin/tsc'), args, {
+  // Invoke the platform-neutral JS CLI: .bin/tsc is a POSIX shim, not a Windows executable.
+  const compiler = path.join(projectRoot, 'node_modules', 'typescript', 'bin', 'tsc');
+  const result = spawnSync(process.execPath, [compiler, ...args], {
     cwd: projectRoot,
     encoding: 'utf8',
     timeout: 60_000,
