@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +24,26 @@ beforeAll(() => configureWindowsAssetHelper(fileURLToPath(new URL('../../', impo
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 
 describe('bounded native Windows process bridge (portable mocks)', () => {
+  it('ignores a hostile working directory when choosing the executable', async () => {
+    const child = childProcess();
+    const checkoutRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const fakeCwd = path.join(checkoutRoot, 'attacker-controlled');
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(fakeCwd);
+    let work: ReturnType<typeof readWindowsAsset>;
+    try {
+      work = readWindowsAsset('C:\\assets', 'pack/leaf.png', 8);
+    } finally {
+      cwd.mockRestore();
+    }
+    expect(spawn).toHaveBeenCalledWith(
+      path.join(checkoutRoot, 'out', 'windows', 'georama-win-asset-read.exe'),
+      expect.any(Array),
+      expect.any(Object),
+    );
+    child.emit('close', 0);
+    expect(await work).toEqual({ bytes: new Uint8Array() });
+  });
+
   it('returns binary-safe bytes only after a clean zero exit', async () => {
     const child = childProcess();
     const work = readWindowsAsset('C:\\assets', 'pack/tree.png', 5);
