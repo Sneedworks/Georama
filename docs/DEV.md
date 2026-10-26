@@ -35,14 +35,14 @@ Linux regression checks are in `.github/workflows/windows-file-paths.yml` togeth
 
 Windows user asset files now use an optional dedicated C++17 executable, not the Linux /proc/self/fd backend and not a JavaScript lstat/open preflight. The helper uses Win32 CreateFileW with FILE_FLAG_OPEN_REPARSE_POINT and keeps open directory/file handles without FILE_SHARE_DELETE. Each opened object is checked for a reparse point and its final DOS name is compared against its held parent. Only data verified through bounded reads and before/after metadata is emitted. Errors contain no user paths; Linux behavior remains unchanged.
 
-Build prerequisite: install Visual Studio 2022 C++ Build Tools (MSVC x64). The optional build script discovers Visual Studio using vswhere when not running under Developer PowerShell. Output resides in the git-ignored out/windows directory.
+Build prerequisite: install Visual Studio 2022 C++ Build Tools (MSVC x64) **and the Windows 10/11 SDK** using the *Desktop development with C++* workload. Finding `cl.exe` on `PATH` is not sufficient: `INCLUDE` and `LIB` must point to both the SDK and MSVC standard headers/libraries. The build script checks these directories and, if necessary, uses `vswhere` + `vcvars64.bat` to initialize the complete environment automatically—even when an uninitialized `cl.exe` is already on `PATH`. If that fails, install/repair the SDK from Visual Studio Installer or build in an *x64 Native Tools Command Prompt*. Output resides in the git-ignored `out/windows` directory.
 
 Run on Windows (Node 22, after npm ci):
 
 ~~~powershell
 node scripts/build-win-asset-helper.mjs
 npm run build
-npx vitest run tests/unit/windows-asset-reader.test.ts tests/unit/windows-asset-races.test.ts tests/unit/windows-selected-files.test.ts tests/unit/native-path.test.ts
+npx vitest run tests/unit/msvc-environment.test.ts tests/unit/windows-asset-bridge.test.ts tests/unit/windows-asset-reader.test.ts tests/unit/windows-asset-races.test.ts tests/unit/windows-selected-files.test.ts tests/unit/native-path.test.ts
 ~~~
 
 The Windows tests require a compiled helper; missing helper is a failing test, not a skip. The CI workflow builds it and exercises real junctions, path refusal, size limits, handle release and concurrent directory replacement. Linux CI runs the original asset tests.
