@@ -91,6 +91,15 @@ describe.skipIf(process.platform !== 'win32')('native Windows scoped asset file 
     expect(await fs.readFile(path.join(outside, 'leaf.png'), 'utf8')).toBe('OUTSIDE-SECRET');
   });
 
+  it('rejects a root reached through an ancestor junction', async () => {
+    const { base } = await fixture();
+    const alias = path.join(base, 'alias');
+    await fs.symlink(base, alias, 'junction');
+    // The final root is an ordinary directory, but its parent is a junction.
+    // The held root name must match its authorized spelling, not its target.
+    await fails(path.join(alias, 'root'), 'pack/leaf.png', 'PATH');
+  });
+
   it('denies final file links where symlink creation is supported', async () => {
     const { root, outside } = await fixture();
     const link = path.join(root, 'pack', 'link.png');
