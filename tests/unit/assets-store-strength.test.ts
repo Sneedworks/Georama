@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createAssetStore } from '../../electron/assets/store.ts';
+import { AssetStoreError, createAssetStore } from '../../electron/assets/store.ts';
 import type { AssetStore } from '../../electron/assets/store.ts';
 import { buildPck, makePng } from '../helpers/pck-synthetic.ts';
 
