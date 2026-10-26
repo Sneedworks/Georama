@@ -54,7 +54,9 @@ const parent = path.join(repo, 'out', 'portable');
 await mkdir(parent, { recursive: true });
 const directory = await mkdtemp(path.join(parent, 'georama-win-x64-'));
 const appRoot = path.join(directory, 'resources', 'app');
-await cp(sourceElectron, directory, { recursive: true, force: false, errorOnExist: true });
+// The unique mkdtemp staging directory already exists and is intentionally empty.
+// Permit merging the runtime tree into that directory, but do not overwrite files.
+await cp(sourceElectron, directory, { recursive: true, force: false });
 await mkdir(appRoot, { recursive: true });
 await cp(path.join(repo, 'dist-electron'), path.join(appRoot, 'dist-electron'), { recursive: true });
 await cp(path.join(repo, 'dist'), path.join(appRoot, 'dist'), { recursive: true });
