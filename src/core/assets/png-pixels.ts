@@ -291,11 +291,15 @@ export function decodePngRgba8(
   const trnsBytes = transparency as Uint8Array | null;
 
   if (idatParts.length === 0) fail('chunk', 'Missing IDAT');
-  const stream = allocBytes(idatLength);
-  let streamPos = 0;
-  for (const part of idatParts) {
-    stream.set(part, streamPos);
-    streamPos += part.length;
+  // A single IDAT is already contiguous within the input PNG. Decode from
+  // that view without copying the entire compressed stream.
+  const stream = idatParts.length === 1 ? idatParts[0] : allocBytes(idatLength);
+  if (idatParts.length !== 1) {
+    let streamPos = 0;
+    for (const part of idatParts) {
+      stream.set(part, streamPos);
+      streamPos += part.length;
+    }
   }
 
   if (stream.length < 2) fail('zlib', 'Short zlib stream');
@@ -496,6 +500,17 @@ export function decodePngRgba8(
       }
       out[rowStart + 1 + i] = value & 255;
     }
+  }
+
+  if (colorType === 6 && stride >= 512) {
+    // For wide RGBA8 rows, compact the filter bytes in-place rather than
+    // allocating and copying a second full-size pixel buffer. Small rows use
+    // the direct pixel loop below to avoid per-row copyWithin overhead.
+    for (let y = 0; y < height; y++) {
+      const rowStart = y * (stride + 1) + 1;
+      out.copyWithin(y * stride, rowStart, rowStart + stride);
+    }
+    return { width, height, rgba: out.subarray(0, pixels * 4) };
   }
 
   const rgba = allocBytes(pixels * 4);
