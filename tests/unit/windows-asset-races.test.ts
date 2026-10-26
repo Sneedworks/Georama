@@ -1,10 +1,15 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { readAssetFile } from '../../electron/assets/open.ts';
+import { configureWindowsAssetHelper } from '../../electron/assets/windows-read.ts';
 
 const fixtures: string[] = [];
+beforeAll(() => {
+  if (process.platform === 'win32') configureWindowsAssetHelper(fileURLToPath(new URL('../../', import.meta.url)));
+});
 afterEach(async () => {
   for (const fixture of fixtures.splice(0)) {
     await fs.rm(fixture, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
