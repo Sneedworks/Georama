@@ -1,4 +1,4 @@
-export const IPC = { getInfo: 'app:get-info' } as const;
+export const IPC = {\n  getInfo: 'app:get-info',\n  selectUserAssets: 'assets:select-user-root',\n  readUserImage: 'assets:read-user-image',\n} as const;
 
 export interface AppInfo {
   name: string;
