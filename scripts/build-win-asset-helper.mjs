@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hasMsvcBuildEnvironment } from './msvc-environment.mjs';
+import { hasMsvcBuildEnvironment, vcvarsCommand } from './msvc-environment.mjs';
 
 if (process.platform !== 'win32') {
   console.error('Windows native helper requires Windows and MSVC');
@@ -25,8 +25,8 @@ const args = [
   '/Fo' + object, '/Fe' + exe, source,
 ];
 
-function run(command, a) {
-  const result = spawnSync(command, a, { cwd: root, stdio: 'inherit', windowsHide: true });
+function run(command, a, options = {}) {
+  const result = spawnSync(command, a, { cwd: root, stdio: 'inherit', windowsHide: true, ...options });
   if (result.error) {
     console.error('Could not start native compiler: ' + result.error.code);
     process.exit(1);
@@ -77,12 +77,9 @@ if (clOnPath && hasMsvcBuildEnvironment(process.env)) {
 
   // Run vcvars64.bat and cl.exe in ONE cmd process; only that child inherits
   // the SDK paths set by vcvars. A previous bare where.exe check misses this.
-  const quote = (value) => '"' + value.replaceAll('"', '""') + '"';
   const verify = path.join(root, 'scripts', 'check-msvc-environment.mjs');
-  const command = 'call ' + quote(vcvars) + ' >nul && ' +
-    quote(process.execPath) + ' ' + quote(verify) +
-    ' && cl ' + args.map(quote).join(' ');
-  run('cmd.exe', ['/d', '/s', '/c', command]);
+  const setup = vcvarsCommand(vcvars, process.execPath, verify, args);
+  run(setup.command, setup.args, setup.options);
 }
 if (!existsSync(exe)) failToolchain('Compiler completed but emitted no helper executable.');
 console.log('Built Windows read-only asset helper under out/windows/');
