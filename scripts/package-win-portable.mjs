@@ -30,7 +30,11 @@ async function digest(filename) {
 // Rebuild both the helper and Electron application before copying artifacts.
 // No previous output folder is overwritten or recursively removed.
 run(process.execPath, [path.join(repo, 'scripts', 'build-win-asset-helper.mjs')]);
-run('npm.cmd', ['run', 'build']);
+const npmCli = process.env.npm_execpath;
+if (!npmCli || !path.isAbsolute(npmCli)) {
+  throw new Error('Invoke packaging through npm run package:win:portable.');
+}
+run(process.execPath, [npmCli, 'run', 'build']);
 const sourceElectron = path.join(repo, 'node_modules', 'electron', 'dist');
 const sourceHelper = path.join(repo, 'out', 'windows', 'georama-win-asset-read.exe');
 // Some npm installations defer the Electron binary download until first use.
