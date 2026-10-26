@@ -87,7 +87,7 @@ export async function coreClosedWorld(files: string[], fixtureFiles: string[] = 
   return canonical.filter((filename) => !allowedFiles.has(filename)
     && !allowedRoots.some((directory) => isInside(filename, directory))
     && !(path.dirname(filename) === libDirectory && /^lib\..+\.d\.ts$/.test(path.basename(filename))))
-    .map((filename) => `closed-world core: ${filename}`);
+    .map((filename) => `closed-world core: ${filename.replaceAll(path.sep, '/')}`);
 }
 
 export function rendererClosedWorld(files: string[]): string[] {
