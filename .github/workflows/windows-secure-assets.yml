@@ -23,6 +23,7 @@ jobs:
       - name: Portable bridge and original secure Linux asset tests
         run: >-
           npx vitest run
+          tests/unit/msvc-environment.test.ts
           tests/unit/windows-asset-bridge.test.ts
           tests/unit/assets-open.test.ts
           tests/unit/assets-store.test.ts
@@ -43,6 +44,7 @@ jobs:
         run: >-
           npx vitest run
           tests/unit/native-path.test.ts
+          tests/unit/msvc-environment.test.ts
           tests/unit/windows-asset-bridge.test.ts
           tests/unit/windows-selected-files.test.ts
           tests/unit/windows-asset-reader.test.ts
