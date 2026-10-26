@@ -5,9 +5,7 @@
   "private": true,
   "type": "module",
   "main": "dist-electron/main.cjs",
-  "engines": {
-    "node": "^22.18.0 || ^24.0.0 || >=26.0.0"
-  },
+  "engines": { "node": "^22.18.0 || ^24.0.0 || >=26.0.0" },
   "scripts": {
     "pretypecheck": "node scripts/require-node-22.mjs",
     "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.renderer.json && tsc -p tsconfig.node.json",
@@ -36,7 +34,5 @@
     "vite": "8.3.4",
     "vitest": "5.0.5"
   },
-  "dependencies": {
-    "preact": "11.0.1"
-  }
+  "dependencies": { "preact": "11.0.1" }
 }
