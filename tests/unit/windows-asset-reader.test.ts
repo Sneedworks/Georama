@@ -2,16 +2,22 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { readAssetFile, AssetFileError } from '../../electron/assets/open.ts';
+import { configureWindowsAssetHelper } from '../../electron/assets/windows-read.ts';
 import { createAssetStore, type AssetStore } from '../../electron/assets/store.ts';
 import { makePng } from '../helpers/pck-synthetic.ts';
 
-const helper = path.resolve(process.cwd(), 'out', 'windows', 'georama-win-asset-read.exe');
+const checkoutRoot = fileURLToPath(new URL('../../', import.meta.url));
+const helper = path.join(checkoutRoot, 'out', 'windows', 'georama-win-asset-read.exe');
 const roots: string[] = [];
 const stores: AssetStore[] = [];
 beforeAll(async () => {
-  if (process.platform === 'win32') await fs.access(helper); // Missing helper is a failed gate, not a skip.
+  if (process.platform === 'win32') {
+    configureWindowsAssetHelper(checkoutRoot);
+    await fs.access(helper);
+  } // Missing helper is a failed gate, not a skip.
 });
 afterEach(async () => {
   for (const store of stores.splice(0)) await store.close();
