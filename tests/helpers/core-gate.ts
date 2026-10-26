@@ -52,7 +52,7 @@ export function listedFiles(output: string): string[] {
     throw new Error(`Expected absolute paths from tsc --listFilesOnly:\n${output}`);
   }
   // Diagnostics vary in native path separators. Keep comparisons platform-neutral.
-  return files.map((filename) => filename.replaceAll('\\\\', '/'));
+  return files.map((filename) => filename.replaceAll(path.sep, '/'));
 }
 
 export async function withFixtureProject<T>(
