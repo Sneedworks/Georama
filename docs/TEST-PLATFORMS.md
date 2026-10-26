@@ -55,8 +55,13 @@ exclude list. In particular, the Linux `/proc/self/fd` PCK archive reader is
 not implemented for Windows; a test-filter change does not imply support.
 
 The Linux full-suite timing failures observed under file parallelism
-reproduced green (163/163 across the four affected files) with
-`--no-file-parallelism`. This config now uses that setting by default.
+initially reproduced green (163/163 across the four affected files) with
+`--no-file-parallelism`. A subsequent serial full-suite run exposed one
+additional 213 ms versus 200 ms assertion: the oversized sparse-array test
+counted allocation/GC pauses in its parser timing. That test now constructs
+its fixture outside the timed section and also traps element access and
+enumeration, retaining an explicit no-iteration guarantee. This config runs
+files serially by default.
 
 A newly created unit test is included on both platforms by default. Only add a
 file to a host-specific exclusion after reviewing and documenting its actual
