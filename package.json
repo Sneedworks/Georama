@@ -9,7 +9,7 @@
   "scripts": {
     "pretypecheck": "node scripts/require-node-22.mjs",
     "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.renderer.json && tsc -p tsconfig.node.json",
-    "pretest": "node scripts/require-node-22.mjs",
+    "pretest": "node scripts/require-node-22.mjs && node scripts/prepare-unit-tests.mjs",
     "test": "vitest run",
     "prebuild": "node scripts/require-node-22.mjs",
     "build:main": "node scripts/build-main.mjs",
