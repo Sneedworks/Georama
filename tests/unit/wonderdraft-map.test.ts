@@ -435,7 +435,7 @@ describe('6. hostile structure', () => {
     // that work outside the timed operation and forbid reading any array slot.
     const huge = new Proxy(new Array<GdValue>(10_000_000), {
       get(target, property, receiver) {
-        if (typeof property === 'string' && /^\\d+$/.test(property)) {
+        if (typeof property === 'string' && /^[0-9]+$/.test(property)) {
           throw new Error('oversized symbols array was indexed before its length was rejected');
         }
         return Reflect.get(target, property, receiver);
