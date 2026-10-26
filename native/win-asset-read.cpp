@@ -171,6 +171,7 @@ bool sameSnapshot(const Snapshot& a, const Snapshot& b) {
     a.standard.Directory == b.standard.Directory &&
     a.basic.LastWriteTime.QuadPart == b.basic.LastWriteTime.QuadPart &&
     a.basic.ChangeTime.QuadPart == b.basic.ChangeTime.QuadPart &&
+    a.id.nNumberOfLinks == b.id.nNumberOfLinks &&
     a.id.dwVolumeSerialNumber == b.id.dwVolumeSerialNumber &&
     a.id.nFileIndexHigh == b.id.nFileIndexHigh &&
     a.id.nFileIndexLow == b.id.nFileIndexLow;
@@ -244,6 +245,9 @@ int wmain(int argc, wchar_t** argv) {
   Snapshot before{}, after{};
   if (!snapshot(file, before)) return fail("IO");
   if (before.standard.Directory) return fail("TYPE");
+  // A hardlink beneath the root may name a file also reachable outside it.
+  // Refuse multi-link files rather than claiming containment based on a name.
+  if (before.id.nNumberOfLinks != 1) return fail("PATH");
   const LONGLONG size = before.standard.EndOfFile.QuadPart;
   if (size < 0) return fail("IO");
   if (static_cast<unsigned long long>(size) > cap) return fail("LIMIT");
