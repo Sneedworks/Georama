@@ -222,7 +222,7 @@ try {
     assert.equal(info.name, "Ge'orama");
     assert.equal(info.id, 'georama');
     assert.equal(info.version, pkg.version);
-    assert.equal(info.electron, '44.7.0');
+    assert.equal(info.electron, pkg.devDependencies.electron);
     assert.equal(info.e2e, true);
   });
 
@@ -231,7 +231,7 @@ try {
   });
 
   await check('minimal frozen preload API', async () => {
-    assert.deepEqual(await page.evaluate('Object.keys(window.georama)'), ['getAppInfo']);
+    assert.deepEqual(await page.evaluate('Object.keys(window.georama)'), ['getAppInfo', 'selectUserAssets', 'readUserImage']);
     assert.equal(await page.evaluate('Object.isFrozen(window.georama)'), true);
   });
 
