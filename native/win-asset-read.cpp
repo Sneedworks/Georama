@@ -91,7 +91,9 @@ bool validRoot(const std::wstring& root) {
     if (end == std::wstring::npos) break;
     start = end + 1;
   }
-  return start <= root.size();
+  // Only a bare drive root may end in a backslash. A trailing separator on
+  // any other root would be a noncanonical spelling accepted by Win32.
+  return start < root.size();
 }
 
 bool validRelative(const std::wstring& relative, std::vector<std::wstring>& parts) {
