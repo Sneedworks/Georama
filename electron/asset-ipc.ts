@@ -44,10 +44,13 @@ export function registerAssetIpc(
       if (result.canceled || result.filePaths.length !== 1) return false;
       const root = result.filePaths[0];
       if (!isNativeAbsolutePath(root)) return false;
-      const rootInfo = await lstat(root);\n      const assetsInfo = await lstat(path.join(root, 'assets'));\n      if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() ||\n          !assetsInfo.isDirectory() || assetsInfo.isSymbolicLink()) return false;
+      const rootInfo = await lstat(root);
+      const assetsInfo = await lstat(path.join(root, 'assets'));
+      if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink() ||
+          !assetsInfo.isDirectory() || assetsInfo.isSymbolicLink()) return false;
       trusted(event);
       const next = await createAssetStore({ userDataRoot: root });
-      trusted(event);
+      try { trusted(event); } catch (error) { await next.close(); throw error; }
       const previous = store;
       store = next;
       if (previous) await previous.close();
