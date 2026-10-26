@@ -3,7 +3,7 @@ import { app, BrowserWindow, Menu, session } from 'electron';
 import type { WebContents } from 'electron';
 import { BRAND } from '../src/shared/brand.ts';
 import type { AppInfo } from '../src/shared/ipc.ts';
-import { registerIpc } from './ipc.ts';
+import { registerIpc } from './ipc.ts';\nimport { registerAssetIpc } from './asset-ipc.ts';
 import { configureWindowsAssetHelper } from './assets/windows-read.ts';
 import { createNavigationGuard, isEditorDocument } from './navigation-guard.ts';
 import { installNetwork } from './network.ts';
@@ -109,7 +109,7 @@ if (!e2e && !app.requestSingleInstanceLock()) {
     await network.prepareSession(session.defaultSession);
     installAppProtocol();
     if (process.platform === 'win32') configureWindowsAssetHelper(app.getAppPath());
-    registerIpc(appInfo, () => mainWindow?.webContents ?? null, editorUrl);
+    registerIpc(appInfo, () => mainWindow?.webContents ?? null, editorUrl);\n    registerAssetIpc(() => mainWindow?.webContents ?? null, () => mainWindow, editorUrl);
     createEditorWindow();
   }).catch((error: unknown) => {
     console.error('Application startup failed:', error);
