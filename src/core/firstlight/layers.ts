@@ -121,14 +121,15 @@ function coastFlags(land: Uint8Array, width: number, height: number): { coastLan
  * Each prefix count is at most width*height. Use half-sized Uint32 storage
  * when every count fits; retain Float64 for theoretical larger inputs.
  */
-function summedArea(flags: Uint8Array, width: number, height: number): Uint32Array | Float64Array {
+function summedArea(maskBytes: Uint8Array, width: number, height: number, threshold: number): Uint32Array | Float64Array {
   const stride = width + 1;
   const length = (width + 1) * (height + 1);
   const sat = width * height <= 0xffff_ffff ? new Uint32Array(length) : new Float64Array(length);
   for (let y = 0; y < height; y++) {
     let rowSum = 0;
+    const maskRow = y * width * 4 + 3;
     for (let x = 0; x < width; x++) {
-      rowSum += flags[y * width + x];
+      rowSum += maskBytes[maskRow + x * 4] >= threshold ? 1 : 0;
       sat[(y + 1) * stride + (x + 1)] = sat[y * stride + (x + 1)] + rowSum;
     }
   }
@@ -152,10 +153,11 @@ function rectSum(sat: Uint32Array | Float64Array, width: number, x0: number, y0:
  * coastWater and their combined flags.
  */
 function coastSummedArea(
-  land: Uint8Array,
+  maskBytes: Uint8Array,
   landSat: Uint32Array | Float64Array,
   width: number,
   height: number,
+  threshold: number,
 ): Uint32Array | Float64Array {
   const stride = width + 1;
   // Match the land SAT's exact count representation, including PR #18's
@@ -176,7 +178,7 @@ function coastSummedArea(
       const nearbyLand =
         landSat[bottomRow + right] - landSat[topRow + right] -
         landSat[bottomRow + left] + landSat[topRow + left];
-      const isLand = land[y * width + x] === 1;
+      const isLand = maskBytes[(y * width + x) * 4 + 3] >= threshold;
       const allLand = nearbyLand === (right - left) * (bottom - top);
       if (isLand ? !allLand : nearbyLand !== 0) rowSum++;
       sat[currentRow + x + 1] = sat[previousRow + x + 1] + rowSum;
@@ -196,9 +198,10 @@ export function selectWindow(
   assertExtent(size, 'size');
   assertExtent(stride, 'stride');
   const { width, height } = mask;
-  const land = landMask(mask, threshold);
-  const landSat = summedArea(land, width, height);
-  const coastSat = coastSummedArea(land, landSat, width, height);
+  // Read classifications directly from the mask's alpha channel. No full-map
+  // land-byte allocation is needed while building the two summed-area tables.
+  const landSat = summedArea(mask.data, width, height, threshold);
+  const coastSat = coastSummedArea(mask.data, landSat, width, height, threshold);
   const area = size * size;
   let best: WindowPick | null = null;
   for (let y0 = 0; y0 + size <= height; y0 += stride) {
