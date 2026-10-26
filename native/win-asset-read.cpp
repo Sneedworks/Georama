@@ -214,6 +214,10 @@ int wmain(int argc, wchar_t** argv) {
 
   std::wstring parent;
   if (!nameOf(held.back().value, parent)) return fail("IO");
+  // Opening a selected root with OPEN_REPARSE_POINT only protects the final
+  // component. An ancestor may still be a junction. Reject any root whose
+  // held handle resolves to a different DOS path than the authorized spelling.
+  if (!sameName(std::wstring(L"\\\\?\\") + root, parent)) return fail("PATH");
   if (parent.back() == L'\\' && parent.size() > 7) parent.pop_back();
 
   for (size_t i = 0; i < parts.size(); ++i) {
