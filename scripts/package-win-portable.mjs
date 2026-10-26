@@ -33,6 +33,12 @@ run(process.execPath, [path.join(repo, 'scripts', 'build-win-asset-helper.mjs')]
 run('npm.cmd', ['run', 'build']);
 const sourceElectron = path.join(repo, 'node_modules', 'electron', 'dist');
 const sourceHelper = path.join(repo, 'out', 'windows', 'georama-win-asset-read.exe');
+// Some npm installations defer the Electron binary download until first use.
+try {
+  await requireFile(path.join(sourceElectron, 'electron.exe'));
+} catch {
+  run(process.execPath, [path.join(repo, 'node_modules', 'electron', 'install.js')]);
+}
 await Promise.all([
   requireFile(path.join(sourceElectron, 'electron.exe')),
   requireFile(sourceHelper),
