@@ -168,4 +168,31 @@ describe('bounded native Windows process bridge (portable mocks)', () => {
     }
   });
 
+
+  it('never returns bytes received after its output budget has been exceeded', async () => {
+    const child = childProcess();
+    const work = readWindowsAsset('C:\\assets', 'pack/tree.png', 3);
+    child.stdout.emit('data', Buffer.from([1, 2]));
+    child.stdout.emit('data', Buffer.from([3, 4]));
+    child.stdout.emit('data', Buffer.from([5, 6]));
+    child.emit('close', 0);
+    expect(child.kill).toHaveBeenCalledOnce();
+    expect(await work).toEqual({ error: 'LIMIT' });
+  });
+
+  it('handles synchronous close during kill without leaking a helper slot', async () => {
+    const child = childProcess();
+    child.kill.mockImplementation(() => {
+      child.emit('close', null);
+      return true;
+    });
+    const work = readWindowsAsset('C:\\assets', 'pack/tree.png', 1);
+    child.stdout.emit('data', Buffer.from([1, 2]));
+    expect(await work).toEqual({ error: 'LIMIT' });
+    const nextChild = childProcess();
+    const next = readWindowsAsset('C:\\assets', 'pack/tree.png', 1);
+    nextChild.emit('close', 0);
+    expect(await next).toEqual({ bytes: new Uint8Array() });
+  });
+
 });
