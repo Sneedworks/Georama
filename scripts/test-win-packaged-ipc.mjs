@@ -3,7 +3,7 @@
 // The user must authorize the temporary fixture root in the native folder dialog.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, stat, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, stat } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
