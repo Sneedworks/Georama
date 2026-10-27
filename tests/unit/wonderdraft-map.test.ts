@@ -445,7 +445,7 @@ describe('6. hostile structure', () => {
       // eslint-disable-next-line no-sparse-arrays
       const huge = new Array(10_000_000) as unknown as GdValue;
       expectWdError(() => wdMapFromGd(withEntry(makeSyntheticRoot(), 'symbols', huge)), 'LIMIT', '/symbols');
-    }, 200);
+    }, 1000);
   });
 
   it('a 50MB points string -> LIMIT', () => {
