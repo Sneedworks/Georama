@@ -32,7 +32,7 @@ export function layoutCurvedLabel(options: LabelLayoutOptions): LabelLayoutResul
   const spacing = options.letterSpacing ?? 0;
   const anchor = options.anchor ?? 0.5;
   const maxGlyphs = options.maxGlyphs ?? 4096;
-  if (points.length < 2 || !Number.isFinite(spacing) || !Number.isFinite(anchor) ||
+  if (points.length < 2 || !Number.isFinite(spacing) || spacing < 0 || !Number.isFinite(anchor) ||
       anchor < 0 || anchor > 1 || !Number.isSafeInteger(maxGlyphs) || maxGlyphs < 1) {
     return { ok: false, code: 'INPUT' };
   }
