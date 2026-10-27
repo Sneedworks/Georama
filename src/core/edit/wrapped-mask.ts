@@ -41,7 +41,8 @@ export function paintWrappedMask(options: WrappedMaskPaintOptions): WrappedMaskP
 
   // Normalize negative and out-of-range centers to the periodic x coordinate.
   const wrappedX = ((centerX % width) + width) % width;
-  const painted = mask.slice();
+  // Always allocate independent storage: Node Buffer.slice() would alias the input.
+  const painted = new Uint8Array(mask);
   let changed = 0;
   for (let y = 0; y < height; y++) {
     const dy = (y + 0.5) - centerY;
