@@ -57,6 +57,23 @@ export function jumpFloodReference(grid: ClassGrid): JfaVerdict {
   const width = grid.width;
   const height = grid.height;
   const land = grid.land;
+  // A uniform grid has no coast seeds. The scan exits at the first differing
+  // texel on ordinary mixed maps, leaving the propagation hot path unchanged.
+  const first = land[0];
+  let uniform = land[land.length - 1] === first;
+  if (uniform) {
+    for (let i = 1; i < land.length - 1; i++) {
+      if (land[i] !== first) {
+        uniform = false;
+        break;
+      }
+    }
+  }
+  if (uniform) {
+    const seeds = new Uint16Array(2 * width * height);
+    seeds.fill(JFA_SENTINEL);
+    return { ok: true, seeds, outline: new Uint8Array(width * height) };
+  }
   const outline = new Uint8Array(width * height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
