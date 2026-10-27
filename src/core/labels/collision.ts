@@ -31,7 +31,8 @@ export function selectNonOverlappingLabels(
         box.width <= 0 || box.height <= 0) return { ok: false, code: 'INPUT' };
     const right = box.x + box.width;
     const bottom = box.y + box.height;
-    if (!Number.isFinite(right) || !Number.isFinite(bottom)) return { ok: false, code: 'LIMIT' };
+    if (!Number.isFinite(right) || !Number.isFinite(bottom) ||
+        right <= box.x || bottom <= box.y) return { ok: false, code: 'LIMIT' };
     extents.push({ x: box.x, y: box.y, right, bottom });
   }
 
