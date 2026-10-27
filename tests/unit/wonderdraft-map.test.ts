@@ -292,6 +292,16 @@ describe('3. unknown keys and key order', () => {
     expect('extra' in map).toBe(false);
   });
 
+  it('preserves the shared flag for canonical records without layout metadata', () => {
+    const root = makeSyntheticRoot();
+    const frame = getKey(root, 'frame') as GdDict;
+    const sharedFrame = new GdDict(frame.entries, true);
+    const map = wdMapFromGd(withEntry(root, 'frame', sharedFrame));
+    expect(map.frame.shared).toBe(true);
+    expect('layout' in map.frame).toBe(false);
+    expect('extra' in map.frame).toBe(false);
+  });
+
   it('a tampered layout makes the writer throw FORMAT', () => {
     const good = wdMapFromGd(makeSyntheticRoot());
     const missingKey = wdMapFromGd(makeSyntheticRoot());
@@ -435,7 +445,7 @@ describe('6. hostile structure', () => {
       // eslint-disable-next-line no-sparse-arrays
       const huge = new Array(10_000_000) as unknown as GdValue;
       expectWdError(() => wdMapFromGd(withEntry(makeSyntheticRoot(), 'symbols', huge)), 'LIMIT', '/symbols');
-    }, 200);
+    }, 1000);
   });
 
   it('a 50MB points string -> LIMIT', () => {

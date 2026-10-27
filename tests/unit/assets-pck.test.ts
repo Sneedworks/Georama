@@ -131,6 +131,17 @@ describe('parse a small archive', () => {
     await expect(readPckEntry(memorySource(file), index, path)).resolves.toEqual(A);
   });
 
+  it('preserves non-traversal dot-prefixed and Unicode path segments', () => {
+    const paths = [
+      'res://packs/.hidden/.config.png',
+      'res://packs/..backup/file.csv',
+      'res://packs/naïve/map.png',
+      'res://packs/dots.../a.png',
+    ];
+    const file = buildPck(paths.map((path) => ({ path, data: A })));
+    expect([...parsePckIndex(file, file.length).entries.keys()]).toEqual(paths);
+  });
+
   it('exposes the frozen limits and data extensions', () => {
     expect(PCK_LIMITS).toEqual({ maxFiles: 200_000, maxPathBytes: 1024, maxIndexBytes: 67_108_864, maxEntryBytes: 268_435_456 });
     expect(Object.isFrozen(PCK_LIMITS)).toBe(true);
