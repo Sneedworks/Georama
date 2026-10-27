@@ -1,53 +1,65 @@
-/** Maximum RGBA8 input/output pixels (64 MiB per full-size image). */
-export const GRADE_MAX_PIXELS = 16 * 1024 * 1024;
+/** Maximum RGBA8 input/output pixels (256 MiB per full-size image). */
+export const GRADE_MAX_PIXELS = 64 * 1024 * 1024;
 /** Radii are fractions of the center-to-corner distance; the transition is smoothstep. */
-export const VIGNETTE_INNER_RADIUS = 0.5;
-export const VIGNETTE_OUTER_RADIUS = 1;
+export const GRADE_VIGNETTE_INNER = 0.5;
+export const GRADE_VIGNETTE_OUTER = 1;
 
 export interface GradeParams {
-  readonly hueShiftDegrees: number;
-  readonly saturation: number;
-  readonly value: number;
-  readonly vignetteStrength: number;
+  readonly hueDeg: number;
+  readonly sat: number;
+  readonly val: number;
+  readonly vignette: number;
 }
 
-export type GradeVerdict =
-  | { readonly ok: true; readonly pixels: Uint8Array }
-  | { readonly ok: false; readonly code: 'param' | 'length' | 'limit'; readonly message: string };
+export type GradeErrorCode = 'param' | 'length' | 'limit';
+
+export class GradeError extends Error {
+  readonly code: GradeErrorCode;
+  constructor(code: GradeErrorCode, message: string) {
+    super(message);
+    this.name = 'GradeError';
+    this.code = code;
+  }
+}
+
+/** Floor-based byte quantization shared with the B2 shader reference. */
+function roundByte(channel: number): number {
+  return Math.max(0, Math.min(255, Math.floor(channel + 0.5)));
+}
 
 /**
  * Grade RGBA8 in row-major order, retaining alpha and never modifying the input.
  * Hue is a degree offset in HSV; saturation and value multiply their HSV
- * components and clamp to 1. RGB uses nearest-integer rounding at the end.
+ * components and clamp to 1. RGB uses floor(channel + 0.5) rounding, clamped to RGBA8 range.
  * Vignette darkens RGB by (1 - strength * smoothstep(inner, outer, radius)).
  * A successful call always returns independent output storage.
  */
-export function gradeRgba8(rgba: Uint8Array, width: number, height: number, params: GradeParams): GradeVerdict {
+export function gradeRgba8(rgba: Uint8Array, width: number, height: number, params: GradeParams): Uint8Array {
   if (!Number.isSafeInteger(width) || width < 1 || !Number.isSafeInteger(height) || height < 1) {
-    return { ok: false, code: 'length', message: 'dimensions must be positive safe integers' };
+    throw new GradeError('length', 'dimensions must be positive safe integers');
   }
   const count = width * height;
   if (count > GRADE_MAX_PIXELS) {
-    return { ok: false, code: 'limit', message: 'pixel count exceeds grade limit' };
+    throw new GradeError('limit', 'pixel count exceeds grade limit');
   }
   if (!(rgba instanceof Uint8Array) || rgba.length !== count * 4) {
-    return { ok: false, code: 'length', message: 'RGBA8 data must be a Uint8Array of width * height * 4 bytes' };
+    throw new GradeError('length', 'RGBA8 data must be a Uint8Array of width * height * 4 bytes');
   }
   if (typeof params !== 'object' || params === null ||
-      !Number.isFinite(params.hueShiftDegrees) ||
-      !Number.isFinite(params.saturation) || params.saturation < 0 || params.saturation > 4 ||
-      !Number.isFinite(params.value) || params.value < 0 || params.value > 4 ||
-      !Number.isFinite(params.vignetteStrength) || params.vignetteStrength < 0 || params.vignetteStrength > 1) {
-    return { ok: false, code: 'param', message: 'invalid hue, saturation, value or vignette strength' };
+      (!Number.isFinite(params.hueDeg) || params.hueDeg < -360 || params.hueDeg > 360) ||
+      !Number.isFinite(params.sat) || params.sat < 0 || params.sat > 4 ||
+      !Number.isFinite(params.val) || params.val < 0 || params.val > 4 ||
+      !Number.isFinite(params.vignette) || params.vignette < 0 || params.vignette > 1) {
+    throw new GradeError('param', 'invalid hue, saturation, value or vignette strength');
   }
 
   // Construct the standard typed array explicitly: Uint8Array subclasses may
   // override slice() to return an alias (for example, Node's Buffer).
   const out = new Uint8Array(rgba);
-  const hueShift = (params.hueShiftDegrees % 360) / 60;
-  const adjustHsv = hueShift !== 0 || params.saturation !== 1 || params.value !== 1;
-  const vignette = params.vignetteStrength;
-  if (!adjustHsv && vignette === 0) return { ok: true, pixels: out };
+  const hueShift = (params.hueDeg % 360) / 60;
+  const adjustHsv = hueShift !== 0 || params.sat !== 1 || params.val !== 1;
+  const vignette = params.vignette;
+  if (!adjustHsv && vignette === 0) return out;
 
   const centerX = (width - 1) / 2;
   const centerY = (height - 1) / 2;
@@ -60,13 +72,13 @@ export function gradeRgba8(rgba: Uint8Array, width: number, height: number, para
       if (vignette !== 0 && cornerRadius !== 0) {
         const radius = Math.hypot(x - centerX, y - centerY) / cornerRadius;
         const t = Math.max(0, Math.min(1,
-          (radius - VIGNETTE_INNER_RADIUS) / (VIGNETTE_OUTER_RADIUS - VIGNETTE_INNER_RADIUS)));
+          (radius - GRADE_VIGNETTE_INNER) / (GRADE_VIGNETTE_OUTER - GRADE_VIGNETTE_INNER)));
         shade = 1 - vignette * t * t * (3 - 2 * t);
       }
       if (!adjustHsv) {
-        out[i] = Math.round(rgba[i] * shade);
-        out[i + 1] = Math.round(rgba[i + 1] * shade);
-        out[i + 2] = Math.round(rgba[i + 2] * shade);
+        out[i] = roundByte(rgba[i] * shade);
+        out[i + 1] = roundByte(rgba[i + 1] * shade);
+        out[i + 2] = roundByte(rgba[i + 2] * shade);
         continue;
       }
 
@@ -84,8 +96,8 @@ export function gradeRgba8(rgba: Uint8Array, width: number, height: number, para
       }
       hue = (hue + hueShift) % 6;
       if (hue < 0) hue += 6;
-      const value = Math.min(1, max * params.value);
-      const saturation = max === 0 ? 0 : Math.min(1, delta / max * params.saturation);
+      const value = Math.min(1, max * params.val);
+      const saturation = max === 0 ? 0 : Math.min(1, delta / max * params.sat);
       const chroma = value * saturation;
       const second = chroma * (1 - Math.abs(hue % 2 - 1));
       const offset = value - chroma;
@@ -98,10 +110,10 @@ export function gradeRgba8(rgba: Uint8Array, width: number, height: number, para
       else if (hue < 4) { gg = second; bb = chroma; }
       else if (hue < 5) { rr = second; bb = chroma; }
       else { rr = chroma; bb = second; }
-      out[i] = Math.round((rr + offset) * 255 * shade);
-      out[i + 1] = Math.round((gg + offset) * 255 * shade);
-      out[i + 2] = Math.round((bb + offset) * 255 * shade);
+      out[i] = roundByte((rr + offset) * 255 * shade);
+      out[i + 1] = roundByte((gg + offset) * 255 * shade);
+      out[i + 2] = roundByte((bb + offset) * 255 * shade);
     }
   }
-  return { ok: true, pixels: out };
+  return out;
 }
