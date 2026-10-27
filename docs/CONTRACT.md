@@ -76,7 +76,7 @@ A change that breaks one of these is not merged.
 ## 8. Security reports
 
 - Do not open a public issue or pull request that contains exploit details for a problem that is not fixed.
-- Private vulnerability reporting is not enabled on this repository at the time of this version. Until it is, open a public issue that says only that you have a security report and asks for a private channel, without the details.
+- Report a security problem through the repository's private vulnerability reporting: on the Security tab, use "Report a vulnerability". It has been enabled since 2026-10-26.
 - Read [SECURITY.md](SECURITY.md) first. It states what the shell guarantees, and which layer provides each guarantee.
 
 ## 9. What a reviewer checks

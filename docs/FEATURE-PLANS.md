@@ -14,10 +14,10 @@ To take an item, follow [CONTRACT.md section 5](CONTRACT.md#5-how-a-change-moves
 
 ### A1. Electron 44.9.3 patch (pull request #25)
 
-- **Status:** not ready to merge. The bump changes `package.json` and `package-lock.json` only. On 2026-10-26 the hidden smoke test failed on it, because the test asserted the old version string (44.7.0). The boundary probe asserts the same string. The fix makes both assertions read the pinned version. It is not yet in the public repository, and merge waits for the hidden runs on 44.9.3 to pass.
+- **Status:** open, not ready to merge as it stands. The bump changes `package.json` and `package-lock.json` only. Two end-to-end tests still assert the old version string 44.7.0 (`tests/e2e/smoke.mjs`, `tests/e2e/boundary.mjs`), so the hidden smoke test fails on the bump. A test change in both files makes them read the pinned version. With that change, the GPU, smoke, cleanup and boundary checks passed on 44.9.3 (2026-10-26). A comment asking for the test change is on the pull request, and the pull request waits for it.
 - **Why:** 44.7.0 is no longer the latest patch of its line. [Electron's support policy](https://www.electronjs.org/docs/latest/tutorial/electron-timelines) supports the latest three stable lines, and only the latest patch of each line gets fixes. Advisory GHSA-jr5w-w6x2-84p9 (CVE-2026-115570, severity high, CVSS 7.4, published 2026-10-23) affects versions from 44.0.0-alpha.1 up to 44.9.1, which includes 44.7.0, and is fixed in 44.9.1. The advisory says an app is affected only if it makes TLS connections over a network an attacker can intercept, and that apps which make no network connections are not affected. [SECURITY.md](SECURITY.md) says the app has no legitimate network use. The exposure is therefore low, and the update is still due. No advisory range in the GitHub advisory database covers 44.9.3 (checked 2026-10-26).
 - **Steps:** check the lock entry's integrity value against the npm registry (checked 2026-10-26: the values match for 44.9.3); make the two version assertions read the pinned dependency; run the Node gates on the merged result; run the hidden smoke and boundary checks on 44.9.3.
-- **Done when:** the Node gates pass on the merged result, and the hidden smoke and boundary checks pass on 44.9.3. **Window.**
+- **Done when:** the pull request contains the test change; the Node gates pass on the merged result; the hidden smoke and boundary checks pass on 44.9.3. **Window.**
 
 ### A2. Electron 45 migration
 
@@ -58,7 +58,7 @@ To take an item, follow [CONTRACT.md section 5](CONTRACT.md#5-how-a-change-moves
 
 - **Status:** open. Pull request #29 skips reconstruction for scanlines with filter type 0. The change is equivalent to the old code, which writes each byte back unchanged, but the pull request adds no test.
 - **Plan:** add a test to `tests/unit/assets-png-pixels.test.ts` that decodes a PNG whose every scanline uses filter 0, and checks the output bytes exactly.
-- **Done when:** the test passes on `main` with and without pull request #29.
+- **Done when:** the test passes on `main`.
 
 ## B. Phase 1: parity renderer
 
@@ -161,5 +161,4 @@ Approved order: D1, D2, D3, D4, D5, D6, D7. D8 is standing. Each item starts wit
 
 - Windows as a supported direction (A5).
 - The timing of the Electron 45 migration (A2).
-- Private vulnerability reporting for the repository (contract section 8). It is off today.
-- Merging pull requests #25, #29, #30, #31 and #32, one at a time. #25 waits for its hidden runs (A1).
+- Pull request #25, once its test change is in (A1).
