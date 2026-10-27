@@ -65,6 +65,11 @@ describe('D3 portable collision filtering for synthetic label boxes', () => {
   it('rejects derived-coordinate overflow and excessive input counts', () => {
     expect(selectNonOverlappingLabels([box(Number.MAX_VALUE, 0, Number.MAX_VALUE, 1)]))
       .toEqual({ ok: false, code: 'LIMIT' });
+    // Finite additions may round a positive width down to zero at extreme x/y.
+    expect(selectNonOverlappingLabels([box(Number.MAX_VALUE, 0, 1, 1)]))
+      .toEqual({ ok: false, code: 'LIMIT' });
+    expect(selectNonOverlappingLabels([box(0, Number.MAX_VALUE, 1, 1)]))
+      .toEqual({ ok: false, code: 'LIMIT' });
     expect(selectNonOverlappingLabels([box(0, -Number.MAX_VALUE, 1, Number.MAX_VALUE)]).ok)
       .toBe(true);
     expect(selectNonOverlappingLabels([box(0, 0, 1, 1)], 4097))
