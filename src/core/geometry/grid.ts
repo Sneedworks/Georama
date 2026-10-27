@@ -33,7 +33,9 @@ export function generateGridLines(options: GridOptions): GridResult {
   ];
   const lines: GridLine[] = [];
   for (const [min, max, origin, step, axis] of ranges) {
-    const first = Math.ceil((min - origin) / step);
+    // A boundary quotient may round just above an integer (e.g. 0.1 * 3 / 0.1).
+    // Begin one index earlier and let the exact coordinate bounds guard decide.
+    const first = Math.floor((min - origin) / step);
     const last = Math.floor((max - origin) / step);
     if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last)) return { ok: false, code: 'LIMIT' };
     if (first > last) continue;
