@@ -51,6 +51,9 @@ export function fitView(
   }
   const tx = (viewW - mapW * scale) / 2;
   const ty = (viewH - mapH * scale) / 2;
+  if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
+    return { ok: false, code: 'LIMIT', message: 'fit translation outside finite range' };
+  }
   return { ok: true, view: { scale, tx, ty } };
 }
 
