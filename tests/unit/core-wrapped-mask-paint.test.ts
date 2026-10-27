@@ -32,6 +32,24 @@ describe('D1 horizontally wrapped binary brush painting', () => {
       .toEqual([0, 1, 4, 5]);
   });
 
+  it('does not mutate or alias a Node Buffer passed as its Uint8Array input', () => {
+    // Buffer.slice() aliases the same memory; a typed-array copy must not.
+    const mask = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const before = Buffer.from(mask);
+    const result = paintWrappedMask({
+      width: 3, height: 3, mask,
+      centerX: 1.5, centerY: 1.5, radius: 1, value: 1,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect([...result.mask]).toEqual([0, 1, 0, 1, 1, 1, 0, 1, 0]);
+    expect(result.changed).toBe(5);
+    expect(mask).toEqual(before);
+    expect(result.mask).not.toBe(mask);
+    result.mask[4] = 0;
+    expect(mask).toEqual(before);
+  });
+
   it('supports erasing a single pixel and returns the count of actual changes', () => {
     const mask = new Uint8Array(15).fill(1);
     const r = paintWrappedMask({ ...base, mask, centerX: 2.5, radius: 0, value: 0 });
