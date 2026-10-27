@@ -259,9 +259,37 @@ export function join(path: string, key: string): string {
   return path === '/' ? `/${key}` : `${path}/${key}`;
 }
 
-export function readRecord(dict: GdDict, table: FieldDef[], path: string): Record<string, unknown> {
+/** A record-list conversion reuses this lookup for every entry in that list.
+ * Rebuild it for independent calls so caller-supplied tables are never cached globally.
+ */
+function fieldLookup(table: FieldDef[]): Map<string, FieldDef> {
   const byKey = new Map<string, FieldDef>();
   for (const def of table) byKey.set(def.key, def);
+  return byKey;
+}
+
+function readRecordWithLookup(
+  dict: GdDict,
+  table: FieldDef[],
+  path: string,
+  byKey: ReadonlyMap<string, FieldDef>,
+): Record<string, unknown> {
+  // Canonical records need neither a duplicate-key Set nor temporary layout arrays.
+  if (dict.entries.length === table.length && byKey.size === table.length) {
+    let canonical = true;
+    for (let i = 0; i < table.length; i++) {
+      if (dict.entries[i][0] !== table[i].key) { canonical = false; break; }
+    }
+    if (canonical) {
+      const values: Record<string, unknown> = {};
+      for (let i = 0; i < table.length; i++) {
+        const def = table[i];
+        values[def.prop] = def.read(dict.entries[i][1], join(path, def.key));
+      }
+      if (dict.shared) values['shared'] = true;
+      return values;
+    }
+  }
   const seen = new Set<string>();
   const values: Record<string, unknown> = {};
   const order: string[] = [];
@@ -300,13 +328,20 @@ export function readRecord(dict: GdDict, table: FieldDef[], path: string): Recor
   return values;
 }
 
-export function writeRecord(model: unknown, table: FieldDef[], path: string): GdDict {
+export function readRecord(dict: GdDict, table: FieldDef[], path: string): Record<string, unknown> {
+  return readRecordWithLookup(dict, table, path, fieldLookup(table));
+}
+
+function writeRecordWithLookup(
+  model: unknown,
+  table: FieldDef[],
+  path: string,
+  byKey: ReadonlyMap<string, FieldDef>,
+): GdDict {
   if (typeof model !== 'object' || model === null || Array.isArray(model)) {
     fail('TYPE', path, 'expected record');
   }
   const m = model as Record<string, unknown>;
-  const byKey = new Map<string, FieldDef>();
-  for (const def of table) byKey.set(def.key, def);
   const entries: Array<[GdValue, GdValue]> = [];
   const rawLayout = m['layout'] as Array<string | number> | undefined;
   const rawExtra = m['extra'] as Array<[GdValue, GdValue]> | undefined;
@@ -350,12 +385,18 @@ export function writeRecord(model: unknown, table: FieldDef[], path: string): Gd
   return new GdDict(entries, m['shared'] === true);
 }
 
+export function writeRecord(model: unknown, table: FieldDef[], path: string): GdDict {
+  return writeRecordWithLookup(model, table, path, fieldLookup(table));
+}
+
 export function readRecordList<T>(v: GdValue, path: string, table: FieldDef[], limit: number): T[] {
   const a = readArray(v, path, limit);
   const out: T[] = [];
+  if (a.length === 0) return out;
+  const byKey = fieldLookup(table);
   for (let i = 0; i < a.length; i++) {
     const ep = `${path}[${i}]`;
-    out.push(readRecord(requireDict(a[i], ep), table, ep) as unknown as T);
+    out.push(readRecordWithLookup(requireDict(a[i], ep), table, ep, byKey) as unknown as T);
   }
   return out;
 }
@@ -364,7 +405,9 @@ export function writeRecordList(m: unknown, path: string, table: FieldDef[], lim
   if (!Array.isArray(m)) fail('TYPE', path, 'expected Array');
   if (m.length > limit) fail('LIMIT', path, 'Array too long');
   const out: GdValue[] = [];
-  for (let i = 0; i < m.length; i++) out.push(writeRecord(m[i], table, `${path}[${i}]`));
+  if (m.length === 0) return out;
+  const byKey = fieldLookup(table);
+  for (let i = 0; i < m.length; i++) out.push(writeRecordWithLookup(m[i], table, `${path}[${i}]`, byKey));
   return out;
 }
 
