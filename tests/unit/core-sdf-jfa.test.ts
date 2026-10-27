@@ -117,6 +117,31 @@ describe('jfa validate LIMIT rules', () => {
 });
 
 describe('jfa edge grids', () => {
+  it.each([0, 1])('uniform %i grid retains sentinel seeds over a large non-square extent', (value) => {
+    const width = 257;
+    const height = 129;
+    const land = new Uint8Array(width * height).fill(value);
+    const verdict = jumpFloodReference({ width, height, land });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.outline).toHaveLength(width * height);
+    expect(verdict.seeds).toHaveLength(2 * width * height);
+    expect(verdict.outline.every((byte) => byte === 0)).toBe(true);
+    expect(verdict.seeds.every((coord) => coord === 65535)).toBe(true);
+  });
+
+  it('does not treat a far-corner island as a uniform grid', () => {
+    const width = 257;
+    const height = 129;
+    const land = new Uint8Array(width * height);
+    land[land.length - 1] = 1;
+    const verdict = jumpFloodReference({ width, height, land });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.outline[land.length - 1]).toBe(255);
+    expect(verdict.seeds.some((coord) => coord !== 65535)).toBe(true);
+  });
+
   it('empty grid has no coast and no seeds', () => {
     const width = 2;
     const height = 3;
