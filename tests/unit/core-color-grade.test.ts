@@ -141,3 +141,44 @@ describe('portable RGBA8 colour grade', () => {
     expect(grade(new Uint8Array(0), 65536, 65536)).toMatchObject({ ok: false, code: 'limit' });
   });
 });
+
+
+/** Contract-specific regressions added before the B1 API correction. */
+describe('B1 maintainer contract regression', () => {
+  const contract = { hueDeg: 0, sat: 1, val: 1, vignette: 0 };
+
+  function caughtCode(invoke: () => unknown): unknown {
+    try { invoke(); return undefined; }
+    catch (error) { return (error as { code?: unknown }).code; }
+  }
+
+  it('uses a 64 Mi-pixel cap, not a 16 Mi-pixel cap', () => {
+    expect(GRADE_MAX_PIXELS).toBe(64 * 1024 * 1024);
+  });
+
+  it('accepts the B1 parameter field names and returns a standalone Uint8Array', () => {
+    const red = new Uint8Array([255, 0, 0, 17]);
+    const result = gradeRgba8(red, 1, 1, { ...contract, hueDeg: 120 } as never);
+    expect(result).toEqual(new Uint8Array([0, 255, 0, 17]));
+    expect(result).toBeInstanceOf(Uint8Array);
+    expect(red).toEqual(new Uint8Array([255, 0, 0, 17]));
+  });
+
+  it('throws coded exceptions rather than returning error verdicts', () => {
+    expect(caughtCode(() => gradeRgba8(new Uint8Array(3), 1, 1, contract as never))).toBe('length');
+    expect(caughtCode(() => gradeRgba8(new Uint8Array(4), 1, 1, { ...contract, sat: 5 } as never)))
+      .toBe('param');
+    expect(caughtCode(() => gradeRgba8(new Uint8Array(0), 65536, 65536, contract as never)))
+      .toBe('limit');
+  });
+
+  it('rejects hue outside [-360, 360] but permits both endpoints', () => {
+    const rgba = new Uint8Array([255, 0, 0, 17]);
+    expect(caughtCode(() => gradeRgba8(rgba, 1, 1, { ...contract, hueDeg: -361 } as never)))
+      .toBe('param');
+    expect(caughtCode(() => gradeRgba8(rgba, 1, 1, { ...contract, hueDeg: 361 } as never)))
+      .toBe('param');
+    expect(gradeRgba8(rgba, 1, 1, { ...contract, hueDeg: -360 } as never)).toEqual(rgba);
+    expect(gradeRgba8(rgba, 1, 1, { ...contract, hueDeg: 360 } as never)).toEqual(rgba);
+  });
+});
