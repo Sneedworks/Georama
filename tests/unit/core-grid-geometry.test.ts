@@ -39,6 +39,18 @@ describe('portable map grid geometry', () => {
       ] });
   });
 
+  it('keeps a line exactly at the left edge despite a rounded-up quotient', () => {
+    const edge = 0.1 * 3; // 0.30000000000000004
+    const result = generateGridLines({
+      ...base, minX: edge, maxX: 0.4, stepX: 0.1,
+      minY: 0.2, maxY: 0.4,
+    });
+    expect(result).toEqual({ ok: true, lines: [
+      { axis: 'x', coordinate: edge, index: 3 },
+      { axis: 'x', coordinate: 0.4, index: 4 },
+    ] });
+  });
+
   it('returns empty lines for a viewport containing no grid crossing', () => {
     expect(generateGridLines({ ...base, minX: 0.2, maxX: 0.4, minY: 0.2, maxY: 0.4 }))
       .toEqual({ ok: true, lines: [] });
