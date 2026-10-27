@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.renderer.json && tsc -p tsconfig.node.json",
     "pretest": "node scripts/require-node-22.mjs",
     "test": "vitest run",
+    "precheck:glsl": "node scripts/require-node-22.mjs",
+    "check:glsl": "node scripts/check-glsl.ts",
     "prebuild": "node scripts/require-node-22.mjs",
     "build:main": "node scripts/build-main.mjs",
     "build:renderer": "vite build",
