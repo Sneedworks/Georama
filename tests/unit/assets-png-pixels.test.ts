@@ -183,6 +183,34 @@ describe('png pixel decoder', () => {
     ]);
   });
 
+  it.each([127, 128])('preserves every filter-0 RGBA row exactly at width %i', (width) => {
+    const height = 5;
+    const samples = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        samples[i] = (31 * x + 17 * y) & 255;
+        samples[i + 1] = (7 * x + 53 * y + 1) & 255;
+        samples[i + 2] = (97 * x + 11 * y + 2) & 255;
+        samples[i + 3] = (13 * x + 79 * y + 3) & 255;
+      }
+    }
+    const raw = rawNone(width, height, 6, Array.from(samples));
+    for (let y = 0; y < height; y++) expect(raw[y * (1 + width * 4)]).toBe(0);
+
+    // 127 pixels uses the ordinary copy-out path; 128 reaches the in-place
+    // row-compaction path. Both must preserve the unfiltered bytes verbatim.
+    for (const level of [0, 9]) {
+      const png = testPng({ width, height, colorType: 6, raw, level, idatSplit: 5 });
+      const before = png.slice();
+      const decoded = decodePngRgba8(png);
+      expect(decoded.width).toBe(width);
+      expect(decoded.height).toBe(height);
+      expect(decoded.rgba).toEqual(samples);
+      expect(png).toEqual(before);
+    }
+  });
+
   it('decodes single and split IDAT streams identically without changing the PNG input', () => {
     const data = Array.from({ length: 16 * 16 * 4 }, (_, i) => (i * 43 + 17) & 255);
     const raw = rawNone(16, 16, 6, data);
