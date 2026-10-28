@@ -1,9 +1,9 @@
 /** Portable, asset-independent territory borders from a row-major ID raster. */
 export type TerritoryBorder = Readonly<{
   x1: number; y1: number; x2: number; y2: number;
-  /** Territory ID on the left or upper side. Zero means unclaimed. */
+  /** Claimed territory ID on the left or upper side; never zero. */
   a: number;
-  /** Territory ID on the right or lower side. Zero means unclaimed. */
+  /** Claimed territory ID on the right or lower side; never zero. */
   b: number;
 }>;
 export type TerritoryBorderResult =
@@ -22,7 +22,8 @@ const MAX_DIMENSION = 4096;
 const MAX_BORDERS = 65536;
 
 /**
- * Emit each in-map edge between unlike adjacent territories exactly once.
+ * Emit each in-map edge between two distinct, claimed (non-zero) territories
+ * exactly once. Territory ID 0 means unclaimed land and never creates a border.
  * The outer map perimeter is not a border. IDs are validated before output
  * allocation. Result order is row-major (right, then bottom). Vertical edges
  * run top-to-bottom (a=left); horizontal edges run left-to-right (a=top).
@@ -51,14 +52,14 @@ export function extractTerritoryBorders(options: TerritoryBorderOptions): Territ
       const a = ids[y * width + x];
       if (x + 1 < width) {
         const b = ids[y * width + x + 1];
-        if (a !== b) {
+        if (a !== b && a !== 0 && b !== 0) {
           if (borders.length >= maxBorders) return { ok: false, code: 'LIMIT' };
           borders.push({ x1: x + 1, y1: y, x2: x + 1, y2: y + 1, a, b });
         }
       }
       if (y + 1 < height) {
         const b = ids[(y + 1) * width + x];
-        if (a !== b) {
+        if (a !== b && a !== 0 && b !== 0) {
           if (borders.length >= maxBorders) return { ok: false, code: 'LIMIT' };
           borders.push({ x1: x, y1: y + 1, x2: x + 1, y2: y + 1, a, b });
         }
