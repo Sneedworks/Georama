@@ -25,13 +25,26 @@ describe('portable B4 territory-border geometry', () => {
     });
   });
 
-  it('treats unclaimed ID zero as distinct, but omits the outer perimeter', () => {
+  it('omits outer perimeter and all edges against unclaimed ID zero', () => {
     expect(extractTerritoryBorders({ width: 1, height: 1, ids: [5] }))
       .toEqual({ ok: true, borders: [] });
-    expect(extractTerritoryBorders({ width: 2, height: 1, ids: [0, 0] }))
-      .toEqual({ ok: true, borders: [] });
-    expect(extractTerritoryBorders({ width: 2, height: 1, ids: [0, 5] }))
-      .toEqual({ ok: true, borders: [{ x1: 1, y1: 0, x2: 1, y2: 1, a: 0, b: 5 }] });
+    for (const ids of [[0, 0], [0, 5], [5, 0]]) {
+      expect(extractTerritoryBorders({ width: 2, height: 1, ids }))
+        .toEqual({ ok: true, borders: [] });
+    }
+    for (const ids of [[0, 5], [5, 0]]) {
+      expect(extractTerritoryBorders({ width: 1, height: 2, ids }))
+        .toEqual({ ok: true, borders: [] });
+    }
+  });
+
+  it('retains claimed-to-claimed borders next to unclaimed land in both axes', () => {
+    expect(extractTerritoryBorders({
+      width: 3, height: 2, ids: [0, 7, 9, 0, 7, 9],
+    })).toEqual({ ok: true, borders: [
+      { x1: 2, y1: 0, x2: 2, y2: 1, a: 7, b: 9 },
+      { x1: 2, y1: 1, x2: 2, y2: 2, a: 7, b: 9 },
+    ] });
   });
 
   it('accepts Uint16Array masks without mutating them or their identities', () => {
