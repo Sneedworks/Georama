@@ -63,4 +63,17 @@ describe('portable map grid geometry', () => {
     expect(generateGridLines({ ...base, maxLines: 3 })).toEqual({ ok: false, code: 'LIMIT' });
     expect(generateGridLines({ ...base, stepX: Number.MIN_VALUE })).toEqual({ ok: false, code: 'LIMIT' });
   });
+
+  it('keeps a line exactly at the right edge despite a rounded-down quotient', () => {
+    // 43 * 0.1 is the coordinate of line 43, and 4.3 / 0.1 rounds just below 43.
+    const edge = 43 * 0.1;
+    const result = generateGridLines({
+      ...base, minX: edge - 0.3, maxX: edge, stepX: 0.1, minY: 0, maxY: 0,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.lines.filter(line => line.axis === 'x' && line.index === 43)).toEqual([
+      { axis: 'x', coordinate: edge, index: 43 },
+    ]);
+  });
 });
