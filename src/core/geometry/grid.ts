@@ -33,10 +33,10 @@ export function generateGridLines(options: GridOptions): GridResult {
   ];
   const lines: GridLine[] = [];
   for (const [min, max, origin, step, axis] of ranges) {
-    // A boundary quotient may round just above an integer (e.g. 0.1 * 3 / 0.1).
-    // Begin one index earlier and let the exact coordinate bounds guard decide.
+    // A boundary quotient may round just above or just below an integer (e.g. 0.1 * 3 / 0.1, 4.3 / 0.1).
+    // Begin one index earlier, end one index later, and let the exact coordinate bounds guard decide.
     const first = Math.floor((min - origin) / step);
-    const last = Math.floor((max - origin) / step);
+    const last = Math.floor((max - origin) / step) + 1;
     if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last)) return { ok: false, code: 'LIMIT' };
     if (first > last) continue;
     const count = last - first + 1;
