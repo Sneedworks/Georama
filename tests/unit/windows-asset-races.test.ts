@@ -18,7 +18,8 @@ afterEach(async () => {
 
 describe.skipIf(process.platform !== 'win32')('Windows adversarial asset open and substitution', () => {
   it('never yields outside-root contents while a directory is replaced by a junction', async () => {
-    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'georama-asset-race-'));
+    // Resolve runner TEMP aliases, while the test still creates and races its own junction.
+    const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'georama-asset-race-')));
     fixtures.push(base);
     const root = path.join(base, 'root');
     const outside = path.join(base, 'outside');
