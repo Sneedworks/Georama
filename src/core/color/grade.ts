@@ -110,9 +110,15 @@ export function gradeRgba8(rgba: Uint8Array, width: number, height: number, para
       else if (hue < 4) { gg = second; bb = chroma; }
       else if (hue < 5) { rr = second; bb = chroma; }
       else { rr = chroma; bb = second; }
-      out[i] = roundByte((rr + offset) * 255 * shade);
-      out[i + 1] = roundByte((gg + offset) * 255 * shade);
-      out[i + 2] = roundByte((bb + offset) * 255 * shade);
+      // The GPU/reference grade quantizes twice: first the HSV RGB result
+      // into RGBA8, then vignette-darkens those bytes and quantizes again.
+      // Fusing the products before rounding changes many channels by one LSB.
+      const gradedR = roundByte((rr + offset) * 255);
+      const gradedG = roundByte((gg + offset) * 255);
+      const gradedB = roundByte((bb + offset) * 255);
+      out[i] = roundByte(gradedR * shade);
+      out[i + 1] = roundByte(gradedG * shade);
+      out[i + 2] = roundByte(gradedB * shade);
     }
   }
   return out;
