@@ -66,3 +66,23 @@ files serially by default.
 A newly created unit test is included on both platforms by default. Only add a
 file to a host-specific exclusion after reviewing and documenting its actual
 platform assumptions. Do not skip failing cross-platform regressions.
+
+## Portable assertions moved out of Linux-only files
+
+The following contracts are now tested on **both** hosts through explicit
+`*-portable.test.ts` files. Their originals no longer duplicate those checks
+in the Linux-only suite:
+
+| Shared suite | Source previously excluded on Windows | Coverage |
+| --- | --- | --- |
+| `assets-config-parser-portable` | `assets-config.test.ts` | Native absolute-path policy, frozen JSON parsing, bad types/paths, proto-pollution, UTF-8 size cap and seeded fuzz |
+| `assets-config-limits-portable` | `assets-config-strength.test.ts` | Exact config byte boundaries and maximum number of roots |
+| `selected-config-errors-portable` | `selected-config-file-strength.test.ts` | Reader, decoder and parser error type/identity across actual selected JSON files |
+| `corpus-verdict-portable` | `corpus-runner.test.ts` | Opaque corpus-output parsing and fail-closed pass/fail verdicts |
+| `assets-store-options-portable` | `assets-store-strength.test.ts` | Frozen limits, cap validation before I/O, rejection of non-record options |
+
+Host-specific files retain the filesystem traversal, POSIX symlink/FIFO,
+Linux descriptor and backend-specific behaviors. The next useful splits are
+`protocol.test.ts` (trusted app resources) and the selected asset file
+readers, where semantics differ between Linux descriptor opens and native
+Windows handles. Those require direct host validation, not merely moving tests.

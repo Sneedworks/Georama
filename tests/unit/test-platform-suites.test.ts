@@ -32,6 +32,11 @@ describe('unit test platform selection', () => {
         'tests/unit/windows-asset-bridge.test.ts',
         'tests/unit/native-path.test.ts',
         'tests/unit/core-boundary.test.ts',
+        'tests/unit/assets-config-parser-portable.test.ts',
+        'tests/unit/assets-config-limits-portable.test.ts',
+        'tests/unit/selected-config-errors-portable.test.ts',
+        'tests/unit/corpus-verdict-portable.test.ts',
+        'tests/unit/assets-store-options-portable.test.ts',
       ]) {
         expect(excluded.has(shared), `${platform}: ${shared}`).toBe(false);
       }
