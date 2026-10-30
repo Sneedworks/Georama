@@ -18,6 +18,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
+const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const run = promisify(execFile);
 let appRoot, rendererRoot, assets, indexPath;
 const reportPath = path.join(os.tmpdir(), `georama-boundary-report-${process.pid}.json`);
@@ -606,7 +607,7 @@ else onmessage = e => run(self,e.data);
     for (const outcome of Object.values(out.tamper)) assert.notEqual(outcome, 'allowed');
     assert.equal(out.constructorDenied, true);
     assert.deepEqual(Object.keys(out.before).sort(), ['name','id','version','electron','chrome','node','platform','e2e'].sort());
-    assert.equal(out.before.electron, '44.7.0');
+    assert.equal(out.before.electron, pkg.devDependencies.electron);
     return out;
   });
   await probe('CSP blocks executable inline code and eval', async () => {

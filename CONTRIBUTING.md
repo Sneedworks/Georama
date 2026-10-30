@@ -1,23 +1,24 @@
 # Contributing to Ge'orama
 
-Ge'orama is a Linux-native map editor for fantasy maps, with Wonderdraft compatibility as a goal. It is in early development: Phase 0 (foundation and first light) is in progress. The code is TypeScript (strict) on Electron 44, with Vite, Vitest, Preact and hand-written WebGL2.
+Ge'orama is a Linux-native map editor for fantasy maps, with Wonderdraft compatibility as a goal. It is in early development. The code is TypeScript (strict) on Electron 44, with Vite, Vitest, Preact and hand-written WebGL2. It is MIT-licensed.
 
-Read these first:
+Start with these documents:
 
-- [README.md](README.md): what the project is, and its status.
-- [docs/DEV.md](docs/DEV.md): setup, gates, layout and code conventions. This note does not repeat them.
+- [docs/CONTRACT.md](docs/CONTRACT.md): the rules a change must meet, and the steps from an idea to a merged pull request. This is the reference for contributors.
+- [docs/FEATURE-PLANS.md](docs/FEATURE-PLANS.md): the planned work, with the files, the tests and the done criteria for each item.
+- [docs/DEV.md](docs/DEV.md): setup, commands, layout and code conventions.
 - [docs/SECURITY.md](docs/SECURITY.md): the threat model and the boundary checks.
+- [README.md](README.md): what the project is, and its status.
 
-If this note and the code disagree, the code is right and the disagreement is worth reporting.
+If a document and the code disagree, the code is right, and the disagreement is worth reporting.
 
-## Ground rules
+## Ground rules in brief
 
-- **No private data.** Never commit map files, map names or sizes, texture or pack names, local paths, credentials, or statistics taken from a private map collection. Use `<redacted>` where a name would otherwise appear.
-- **No Wonderdraft assets.** The repository does not bundle, copy or require Wonderdraft art, textures, shaders or scripts. The app reads user-owned data at runtime, and tests that need real data skip without it.
-- **Clean room.** Do not decompile Wonderdraft's compiled scripts or shaders, and do not copy code from them. Work from the documented format in [docs/FORMAT-wonderdraft-map-v15.md](docs/FORMAT-wonderdraft-map-v15.md), from observed behaviour, and from your own code.
-- **Keep notices.** Keep the existing copyright and licence notices in the files they cover, for example `src/core/formats/gcpf.ts`.
-- **Keep the core portable.** `src/core` and `src/shared` must not import Node, Electron or DOM APIs. `npm test` enforces this; see the code conventions in DEV.md.
-- **Keep the repository clean.** Do not commit scratch files, build output (`dist/`, `dist-electron/`) or local configuration.
+- **No private data.** Never commit map files, map names or sizes, texture or pack names, local paths, credentials, or statistics from a private map collection. Write `<redacted>` where a name would otherwise appear.
+- **No Wonderdraft assets, code or scripts.** Work from the documented format in [docs/FORMAT-wonderdraft-map-v15.md](docs/FORMAT-wonderdraft-map-v15.md), from observed behaviour, and from your own code. Do not decompile Wonderdraft.
+- **Keep the core portable.** `src/core` and `src/shared` import no Node, Electron or DOM APIs. `npm test` enforces this.
+- **Keep the Electron boundary.** Do not weaken the window, navigation, permission, protocol or content-security settings. See [docs/SECURITY.md](docs/SECURITY.md).
+- **Keep notices.** Keep the copyright and licence notices in the files they cover.
 
 ## Set up
 
@@ -34,14 +35,15 @@ The repository has no CI, so the gates are your responsibility. Run these before
 | Command | What it checks |
 | --- | --- |
 | `npm run typecheck` | Strict TypeScript for the core, renderer and node projects |
-| `npm test` | Unit tests, including the portable-core gates |
+| `npm test` | Unit tests, including the portable-core rules |
 | `npm run build` | Typecheck, then the main and preload bundles, then the renderer bundle |
 
-Also run the ones that match your change:
+Also run the ones that match your change. The rule for each kind of change is in [docs/CONTRACT.md section 6](docs/CONTRACT.md#6-gates).
 
 | Command | When | Notes |
 | --- | --- | --- |
 | `npm run e2e` | `electron/`, `src/shared/`, IPC, navigation | Real Electron smoke test. The window stays hidden. |
+| `node tests/e2e/boundary.mjs` | the same, after `npm run build` | Runs the boundary probes against the built app. The window stays hidden. |
 | `npm run e2e:gl` | render code, shaders, GPU paths | Needs a WebGL2 GPU. The window stays hidden. |
 | `npm run e2e:compose` | the compositor | The window stays hidden. |
 | `node tests/e2e/cleanup.mjs` | after the hidden runs | Cleanup check. |
@@ -51,28 +53,9 @@ Also run the ones that match your change:
 
 ## Pull requests
 
-1. Branch from `main`. Name the branch for the task, for example `fix/<topic>` or `task/<topic>`.
-2. Keep one concern per pull request. A behaviour change needs a test that fails without the change, and the test must fail for the reason its name gives.
-3. Write commit subjects as `type(scope): summary`, for example `fix(navigation): refuse other app documents before they commit`.
-4. Fill in the pull request template. List the gates you ran with their summary lines, and list what you did not run under "Not observed". Attach screenshots for visible changes, or say they were not captured.
-5. Resolve conflicts with `main` before review starts. Say in the pull request what you changed.
-6. Once review has started, add commits instead of force-pushing the branch.
+Follow the steps in [docs/CONTRACT.md section 5](docs/CONTRACT.md#5-how-a-change-moves-to-a-merge). In short: branch from `main`, keep one concern per pull request, write a failing test first, fill in the pull request template with the gate summary lines and a "Not observed" list, and add commits rather than force-pushing once review has started.
 
-## Recommendations
-
-- Prefer a small, reviewable diff.
-- Say what you did not observe. "Not run" is an honest answer. An unverified claim is not.
-- If a change crosses a trust boundary (IPC, file access, the custom protocol, navigation), say what crosses it and how it is checked. See [docs/SECURITY.md](docs/SECURITY.md).
-- If the spec and the code disagree, say so in the pull request instead of working around it.
-- Test the failure paths as well as the happy path.
-
-## Maintainers
-
-- Read the whole diff before running anything from a pull request. Run untrusted code only in a throwaway worktree, with an empty environment (`env -i PATH=/usr/bin:/bin HOME=$HOME`).
-- Check a merge before you call it clean: run the gates on the merged result, not only on the branch.
-- Merge with the head commit pinned to its full 40-character SHA: `gh pr merge <N> --merge --match-head-commit <sha>`. Short SHAs are refused.
-- Do not force-push `main`. A correction is a new commit that names the record it corrects.
-- Every merge, close or comment on a public pull request is a public action. Keep a record of it.
+The owner reviews and merges pull requests. Platform scope and trust-boundary changes are decided by the owner first.
 
 ## License
 
