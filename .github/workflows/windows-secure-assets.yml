@@ -35,9 +35,7 @@ jobs:
           tests/unit/assets-store.test.ts
 
   windows-native:
-    # Optional organization/repository Actions variable with runner JSON.
-    # Defaults to GitHub-hosted Windows when no org runner is configured.
-    runs-on: ${{ fromJSON(vars.GEORAMA_WINDOWS_RUNNER_JSON || '"windows-latest"') }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
