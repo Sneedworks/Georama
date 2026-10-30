@@ -1,0 +1,36 @@
+name: Host-aware full unit suite
+
+on:
+  push:
+    branches: ['test/platform-aware-unit-suites']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-suite:
+    name: Full host-specific unit suite on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Full shared and host-selected unit suite
+        run: npm test
+
+# npm test's Windows pretest must build the actual MSVC helper; never skip
+# native filesystem tests just because the executable is unavailable.
+# This does not run owner-only corpus, visual, GPU, or Electron E2E gates.
