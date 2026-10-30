@@ -74,6 +74,29 @@ describe('portable RGBA8 colour grade — B1 contract', () => {
       .toEqual(new Uint8Array([102, 204, 255, 7]));
   });
 
+  it('rounds the HSV stage before applying vignette (B2 second rounding stage)', () => {
+    const pixels = new Uint8Array(3 * 3 * 4);
+    pixels.set([1, 0, 0, 71], 0); // corner: vignette shade is exactly 0.5
+    const both = grade(pixels, 3, 3, { val: 0.5, vignette: 0.5 });
+    // The HSV stage rounds 0.5 to 1, then vignette rounds 1 * 0.5 to 1.
+    // Single rounding of 0.5 * 0.5 incorrectly produces 0.
+    expect(Array.from(both.slice(0, 4))).toEqual([1, 0, 0, 71]);
+    expect(pixels[0]).toBe(1);
+  });
+
+  it('matches separately quantized HSV and vignette stages on mixed pixels', () => {
+    const pixels = new Uint8Array(5 * 5 * 4);
+    for (let p = 0; p < 25; p++) {
+      pixels.set([(17 + p * 31) % 256, (43 + p * 53) % 256, (139 + p * 19) % 256, (p * 29) % 256], p * 4);
+    }
+    const hsv = { hueDeg: 73, sat: 1.3, val: 0.83 };
+    const combined = grade(pixels, 5, 5, { ...hsv, vignette: 0.72 });
+    const afterHsv = grade(pixels, 5, 5, hsv);
+    const afterVignette = grade(afterHsv, 5, 5, { vignette: 0.72 });
+    expect(combined).toEqual(afterVignette);
+    expect(pixels[0]).toBe(17);
+  });
+
   it('uses floor(channel + 0.5) byte rounding, clamped to the RGBA8 interval', () => {
     const red = new Uint8Array([255, 0, 0, 99]);
     // Pure red's value factor gives precisely half an output byte.
