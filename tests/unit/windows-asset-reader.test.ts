@@ -24,7 +24,10 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
 });
 async function fixture() {
-  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'georama-win-assets-'));
+  // GitHub-hosted Windows TEMP may be reached through a directory alias.
+  // The helper intentionally rejects ancestor-reparse aliases, so fixtures
+  // must supply the canonical target while separate tests exercise refusal.
+  const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'georama-win-assets-')));
   roots.push(base);
   const root = path.join(base, 'root');
   const outside = path.join(base, 'outside');
