@@ -18,7 +18,9 @@ afterEach(async () => {
 
 describe.skipIf(process.platform !== 'win32')('Windows adversarial asset open and substitution', () => {
   it('never yields outside-root contents while a directory is replaced by a junction', async () => {
-    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'georama-asset-race-'));
+    // Use the actual temporary directory, not a possible runner junction alias;
+    // the adversarial test substitutes its own explicitly created junction.
+    const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'georama-asset-race-')));
     fixtures.push(base);
     const root = path.join(base, 'root');
     const outside = path.join(base, 'outside');
