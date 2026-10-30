@@ -3,7 +3,7 @@ name: Windows paths and selected files
 on:
   pull_request:
   push:
-    branches: [main, 'feat/windows-*']
+    branches: [main, 'feat/windows-*', 'feat/asset-ipc-capabilities', 'test/platform-aware-unit-suites']
   workflow_dispatch:
 
 permissions:
@@ -17,10 +17,7 @@ concurrency:
 jobs:
   file-contracts:
     name: File contracts on ${{ matrix.os }}
-    # Optional organization/repository Actions variable:
-    # GEORAMA_WINDOWS_RUNNER_JSON = {"group":"your-group","labels":["self-hosted","Windows","X64"]}
-    # Unset => GitHub-hosted windows-latest. Ubuntu always uses ubuntu-latest.
-    runs-on: ${{ fromJSON(matrix.os == 'windows-latest' && (vars.GEORAMA_WINDOWS_RUNNER_JSON || '"windows-latest"') || '"ubuntu-latest"') }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
