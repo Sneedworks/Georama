@@ -17,10 +17,7 @@ concurrency:
 jobs:
   launcher:
     name: Launcher on ${{ matrix.os }}
-    # Optional organization/repository Actions variable:
-    # GEORAMA_WINDOWS_RUNNER_JSON = {"group":"your-group","labels":["self-hosted","Windows","X64"]}
-    # Unset => GitHub-hosted windows-latest. Ubuntu always uses ubuntu-latest.
-    runs-on: ${{ fromJSON(matrix.os == 'windows-latest' && (vars.GEORAMA_WINDOWS_RUNNER_JSON || '"windows-latest"') || '"ubuntu-latest"') }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
