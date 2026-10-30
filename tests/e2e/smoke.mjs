@@ -222,7 +222,7 @@ try {
     assert.equal(info.name, "Ge'orama");
     assert.equal(info.id, 'georama');
     assert.equal(info.version, pkg.version);
-    assert.equal(info.electron, '44.7.0');
+    assert.equal(info.electron, pkg.devDependencies.electron);
     assert.equal(info.e2e, true);
   });
 
