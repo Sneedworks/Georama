@@ -1,4 +1,5 @@
-import path from 'node:path';
+// These paths are Linux socket paths even when the resolver is tested on Windows.
+import { posix as path } from 'node:path';
 
 export async function resolveDisplayEnv({ env: inherited, uid, fs }) {
   const env = { ...inherited };
@@ -36,4 +37,19 @@ export async function resolveDisplayEnv({ env: inherited, uid, fs }) {
     }
   }
   return { env, args: [] };
+}
+
+/**
+ * Keep the Linux Wayland configuration unchanged, but do not inspect sockets
+ * or call process.getuid() on native Windows (or other non-Linux platforms).
+ * Pass getuid as a callback so the platform guard is testable on any host OS.
+ */
+export async function resolveLauncherEnv({ platform, env, fs, getuid }) {
+  if (platform !== 'linux') return { env: { ...env }, args: [] };
+  return resolveDisplayEnv({ env, uid: getuid(), fs });
+}
+
+/** Windows has no SIGHUP; keep all three original signal handlers on Unix. */
+export function launcherSignals(platform) {
+  return platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGHUP'];
 }
