@@ -74,6 +74,17 @@ describe('portable RGBA8 colour grade — B1 contract', () => {
       .toEqual(new Uint8Array([102, 204, 255, 7]));
   });
 
+  it('uses degree-first hue arithmetic at whole-sextant rounding edges', () => {
+    // Synthetic half-byte counterexamples. These lock the proposed arithmetic
+    // ordering; independent owner reference-grid parity is still required.
+    expect(grade(new Uint8Array([0, 22, 26, 53]), 1, 1, {
+      hueDeg: 60, sat: 0.5, val: 0.5,
+    })).toEqual(new Uint8Array([8, 7, 13, 53]));
+    expect(grade(new Uint8Array([0, 11, 143, 97]), 1, 1, {
+      hueDeg: 120, sat: 0.5, val: 0.5,
+    })).toEqual(new Uint8Array([72, 36, 39, 97]));
+  });
+
   it('rounds the HSV stage before applying vignette (B2 second rounding stage)', () => {
     const pixels = new Uint8Array(3 * 3 * 4);
     pixels.set([1, 0, 0, 71], 0); // corner: vignette shade is exactly 0.5
