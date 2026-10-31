@@ -1,0 +1,22 @@
+name: PR23 current-main full-unit validation
+
+on:
+  push:
+    branches: [ci/pr23-full-suite-20261031]
+
+permissions:
+  contents: read
+
+jobs:
+  full-unit-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --maxWorkers=1 --no-file-parallelism
+      - run: npm run build
