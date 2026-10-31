@@ -1,0 +1,58 @@
+name: PR39 candidate grade arithmetic — branch-only validation
+
+on:
+  push:
+    branches: ['ci/pr39-grade-edge-validation']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: RED regression before candidate implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git switch --detach 93ff2fe39693140d4bf85d3678c45e1abb659c3b
+          npm ci
+          set +e
+          npx vitest run tests/unit/core-color-grade.test.ts --maxWorkers=1 --no-file-parallelism > /tmp/grade-red.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/grade-red.log
+          if [ "$code" -eq 0 ]; then
+            echo 'ERROR: regression unexpectedly passes before the candidate fix'
+            exit 1
+          fi
+          grep -q 'degree-first hue arithmetic' /tmp/grade-red.log
+          grep -q 'AssertionError' /tmp/grade-red.log
+      - name: GREEN candidate exact PR source head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git switch --detach 7d70c74e009c36bde0a808e178a8779e8ec3bfbc
+          npx vitest run tests/unit/core-color-grade.test.ts --maxWorkers=1 --no-file-parallelism
+      - name: Merge preview and complete Node 22 gates (no PR branch push)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch https://github.com/actualrat1984/Georama.git main
+          git -c user.email=pr39-ci@users.noreply.github.com -c user.name='Georama CI preview' merge --no-edit FETCH_HEAD
+          npm ci
+          npm run typecheck
+          npm test -- --maxWorkers=1 --no-file-parallelism
+          npm run build
+          git diff --check
+          echo 'PASS: merged-result Node22 gates on candidate grade code'
+# Does not contain the owner's reference oracle; byte-for-byte parity requires
+# the independent 2,000-vector and 16,200-vector comparisons on PR #39 head.
