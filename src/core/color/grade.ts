@@ -56,8 +56,8 @@ export function gradeRgba8(rgba: Uint8Array, width: number, height: number, para
   // Construct the standard typed array explicitly: Uint8Array subclasses may
   // override slice() to return an alias (for example, Node's Buffer).
   const out = new Uint8Array(rgba);
-  const hueShift = (params.hueDeg % 360) / 60;
-  const adjustHsv = hueShift !== 0 || params.sat !== 1 || params.val !== 1;
+  const hueOffsetDeg = params.hueDeg % 360;
+  const adjustHsv = hueOffsetDeg !== 0 || params.sat !== 1 || params.val !== 1;
   const vignette = params.vignette;
   if (!adjustHsv && vignette === 0) return out;
 
@@ -94,8 +94,12 @@ export function gradeRgba8(rgba: Uint8Array, width: number, height: number, para
         else if (max === g) hue = (b - r) / delta + 2;
         else hue = (r - g) / delta + 4;
       }
-      hue = (hue + hueShift) % 6;
-      if (hue < 0) hue += 6;
+      // Preserve the reference's degree-domain arithmetic until after
+      // applying the hue offset. Dividing the offset by 60 before adding
+      // changes some exact half-byte results at whole-sextant boundaries.
+      hue = (hue * 60 + hueOffsetDeg) % 360;
+      if (hue < 0) hue += 360;
+      hue /= 60;
       const value = Math.min(1, max * params.val);
       const saturation = max === 0 ? 0 : Math.min(1, delta / max * params.sat);
       const chroma = value * saturation;
