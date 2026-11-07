@@ -228,16 +228,9 @@ try {
 
   await check('asset IPC is registered only for the supported Windows asset backend', async () => {
     if (process.platform !== 'win32') {
-      // The preload API may be present, but the main process must not expose
-      // native asset capabilities on platforms without this staged backend.
-      await assert.rejects(
-        () => page.evaluate("window.georama.selectUserAssets()"),
-        /No handler registered for 'assets:select-user-root'/,
-      );
-      await assert.rejects(
-        () => page.evaluate("window.georama.readUserImage('symbol', 'user:\/\/assets\/p\/tree')"),
-        /No handler registered for 'assets:read-user-image'/,
-      );
+      // No native backend: neither the handlers nor their preload methods
+      // belong in the Linux renderer's public capability surface.
+      assert.deepEqual(await page.evaluate('Object.keys(window.georama)'), ['getAppInfo']);
       return;
     }
     const unavailable = await page.evaluate("window.georama.readUserImage('symbol', 'user://assets/p/tree')");
@@ -253,7 +246,10 @@ try {
   });
 
   await check('minimal frozen preload API', async () => {
-    assert.deepEqual(await page.evaluate('Object.keys(window.georama)'), ['getAppInfo', 'selectUserAssets', 'readUserImage']);
+    const expected = process.platform === 'win32'
+      ? ['getAppInfo', 'selectUserAssets', 'readUserImage']
+      : ['getAppInfo'];
+    assert.deepEqual(await page.evaluate('Object.keys(window.georama)'), expected);
     assert.equal(await page.evaluate('Object.isFrozen(window.georama)'), true);
   });
 
