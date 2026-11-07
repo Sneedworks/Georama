@@ -55,6 +55,22 @@ describe('MSVC build environment readiness (host-independent)', () => {
 });
 
 describe('VC environment invocation with cmd.exe', () => {
+  it.each(['%', '!', '^', '&', '|', '<', '>', '"', '\r', '\n', '\0'])(
+    'refuses cmd.exe metacharacter or expansion input %j in every interpolated argument',
+    (character) => {
+      const safe = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\VC\\vcvars64.bat';
+      const node = 'C:\\Program Files\\nodejs\\node.exe';
+      const verify = 'E:\\Georama Workspace\\scripts\\check.mjs';
+      for (const position of ['vcvars', 'node', 'verify', 'compiler'] as const) {
+        const args = [safe, node, verify, ['/nologo'] as string[]] as const;
+        const altered: [string, string, string, string[]] = [args[0], args[1], args[2], [...args[3]]];
+        if (position === 'compiler') altered[3][0] += character;
+        else altered[position === 'vcvars' ? 0 : position === 'node' ? 1 : 2] += character;
+        expect(() => vcvarsCommand(...altered)).toThrow(TypeError);
+      }
+    },
+  );
+
   it('passes quoted Build Tools 2026 paths verbatim without /s quote stripping', () => {
     const bat = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat';
     const node = 'C:\\Program Files\\nodejs\\node.exe';
