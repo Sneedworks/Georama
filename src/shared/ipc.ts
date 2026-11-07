@@ -23,6 +23,7 @@ export type UserImageKind = 'symbol' | 'path-style' | 'border-style' | 'water-te
 
 export interface GeoramaApi {
   getAppInfo(): Promise<AppInfo>;
-  selectUserAssets(): Promise<boolean>;
-  readUserImage(kind: UserImageKind, reference: string): Promise<AssetImageReply>;
+  /** Experimental Windows-only capability; absent from the preload on other hosts. */
+  selectUserAssets?(): Promise<boolean>;
+  readUserImage?(kind: UserImageKind, reference: string): Promise<AssetImageReply>;
 }
