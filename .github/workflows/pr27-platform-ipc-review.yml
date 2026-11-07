@@ -1,0 +1,45 @@
+name: PR27 platform IPC gate validation
+
+on:
+  push:
+    branches: [ci/pr27-ipc-platform-20261107]
+
+permissions:
+  contents: read
+
+jobs:
+  ipcs:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Build native helper for Windows
+        if: runner.os == 'Windows'
+        run: node scripts/build-win-asset-helper.mjs
+      - run: npm run typecheck
+      - name: Asset IPC and platform-gating unit regressions
+        run: npx vitest run tests/unit/asset-ipc-platform.test.ts tests/unit/asset-ipc.test.ts tests/unit/ipc-sender.test.ts --maxWorkers=1 --no-file-parallelism
+      - run: npm run build
+      - name: Full Linux unit suite
+        if: runner.os == 'Linux'
+        run: npm test -- --maxWorkers=1 --no-file-parallelism
+      - name: Install hidden-window Electron prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libnss3 libatk-bridge2.0-0 libasound2t64 libgbm1 libgtk-3-0
+      - name: Hidden Electron smoke with Linux asset IPC unavailable
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run e2e
+      - name: Hidden Electron security boundary
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node tests/e2e/boundary.mjs
+      - name: Check hidden-window cleanup
+        if: always() && runner.os == 'Linux'
+        run: xvfb-run -a node tests/e2e/cleanup.mjs
