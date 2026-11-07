@@ -28,6 +28,19 @@ Defence in depth: each layer is meant to hold on its own. Code is in `electron/`
 
 Why the main frame is judged on *commits*: `did-start-navigation` also fires for attempts that `will-navigate` then cancels (a dropped file, an external link). Recovering from those would throw away unsaved editor state for something already harmless. Child frames are judged on attempts, because only the page itself can create one and the app has none; CSP (`default-src 'none'`) blocks URL frames, while `about:blank` and `srcdoc` frames, which CSP does not cover, commit and are caught.
 
+
+## Native Windows filesystem support — staged guarantee
+
+Windows selected-map and configuration reads are separate from Georama's root-confined asset reading. The asset and PCK readers still require Linux descriptor-relative filesystem semantics and explicitly refuse native Windows before performing filesystem I/O. Recognizing a configured Windows Wonderdraft folder does not authorize asset reads.
+
+Windows path validation accepts only normalized drive-qualified absolute paths, rejecting ambiguous device, share, stream and relative forms. It provides path syntax screening, not filesystem confinement.
+
+The directly selected Windows file reader now requires a separate native held-HANDLE helper. It starts at the drive root, holds every ancestor without DELETE sharing, refuses reparse points/junctions at every level, verifies each opened object's normalized final DOS path, and emits bytes only after bounded read and file-identity checks. There is no JavaScript `lstat`/`open` fallback, so a missing native binary fails closed. This is designed to close the former leaf `lstat`-then-`open` race and intermediate junction exposure; adversarial Windows tests and independent review remain necessary. The helper is **not yet signed, authenticated or packaged**; it must not be distributed or wired to untrusted renderer IPC before its provenance and release integration have been reviewed. Windows config lookup requires canonical `APPDATA`; recursive drive/mount scanning is disabled. The Linux descriptor-confined reader remains unchanged.
+
+**Release hold:** `georama-win-selected-read.exe` is unsigned and is **not for release**. Release remains blocked until the helper has **Authenticode signing** and an **independent security review** is complete. The development-only helper must not be considered authenticated merely because its application-relative path is fixed.
+
+A subsequent Windows asset backend requires independent security review and native tests for links, junctions, path replacement, archive consistency, size limits, concurrent reads and cleanup. The existing Linux backend remains unchanged.
+
 ## How it is verified
 
 * `npm test`: unit tests for the allow-list (table of 25+ URLs), the ordering of the network lockdown against window creation, the navigation guard (fake clock, rate limit, hash changes), `isTrustedSender`, the protocol core (traversal variants, symlinks, HEAD without a body read, 405/413/414, headers on every response), and the **wiring** of `registerIpc` and `installSecurity` with Electron mocked, so removing a check turns a test red.

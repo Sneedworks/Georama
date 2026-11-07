@@ -25,6 +25,26 @@ On a native Windows terminal, with Node 22 and dependencies installed by `npm ci
 
 `.github/workflows/launcher-platforms.yml` tests the launcher and builds on Linux and Windows; only the Windows job runs the native Electron smoke. The existing complete Linux-oriented unit and E2E suites are **not** certified Windows gates. In particular, the Linux smoke/cleanup scripts depend on Unix process groups and `/proc`. Future Windows filesystem work must supply OS-specific security tests rather than merely skip the Linux assertions.
 
+## Native Windows selected files and path discovery (phase 1)
+
+This step intentionally separates **directly selected files** from **root-confined community asset packs**. On Windows, Georama can validate native `C:\\...` paths, read selected `.json` / `.wonderdraft_map` data through a native held-HANDLE helper with byte caps and change-detection checks, parse Windows config paths, and discover configured or conventional Wonderdraft directories (`ProgramFiles`, `ProgramFiles(x86)`, `APPDATA`, `LOCALAPPDATA`, user home). Windows does **not** recursively scan supplied drives or mount roots; the bounded mount scanner remains available on non-Windows platforms. Config lookup requires a valid absolute `APPDATA` value and does not guess an `AppData` directory beneath the home path.
+
+The Windows path policy currently accepts only **normalized, fully drive-qualified paths**. UNC shares, device/verbatim prefixes, drive-relative paths, alternate data streams, reserved device names, dot/dotdot segments, and trailing dot/space components are intentionally rejected. The POSIX path contract and Linux discovery remain unchanged.
+
+**Held-HANDLE boundary:** `native/win-selected-read.cpp` starts at the selected file's drive root and opens every path component in order, keeping every ancestor handle without DELETE sharing. Each opened component is checked for a reparse-point tag, directory/file type and its final DOS path. The final file is read with bounded chunks and an identity/metadata snapshot before any bytes are emitted. The Node caller never uses a pathname `lstat`/`open` fallback; missing or failing helpers refuse the read. This closes the earlier leaf `lstat`-then-`open` race and intermediate junction traversal at the native-file boundary, subject to adversarial Windows CI and independent review. Device/UNC paths remain out of scope. The helper is **not signed/authenticated or packaged for release** in this phase; signing/provenance and complete package integration remain separate release blockers. No renderer IPC is introduced here.
+
+**Asset packs remain fail-closed on Windows.** `readAssetFile()` and `openPckFile()` still explicitly reject non-Linux platforms before filesystem I/O. Root detection does not grant a read capability. A subsequent security-reviewed Windows backend must preserve confined asset-root reads, reparse-point resistance, bounded reads and handle identity, without weakening the existing Linux backend.
+
+Windows Node 22 checks:
+
+```powershell
+npm run build
+node scripts/build-win-selected-helper.mjs
+npx vitest run tests/unit/native-path.test.ts tests/unit/windows-selected-files.test.ts
+```
+
+Linux regression checks are in `.github/workflows/windows-file-paths.yml` together with the Windows build and native-file tests. This phase does not claim that the Linux-specific full unit suite is green on Windows or that the application now loads Wonderdraft assets natively.
+
 ## Layout
 
 - `electron/` — sandboxed application shell, custom protocol, narrow IPC, preload bridge.

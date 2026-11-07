@@ -1,5 +1,6 @@
 import { lstat, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { isNativeAbsolutePath } from '../native-path.ts';
 
 export interface GeoramaConfig {
   readonly wonderdraftInstall?: string;
@@ -29,6 +30,12 @@ export const CONFIG_LIMITS: Readonly<{ maxBytes: number; maxPathChars: number; m
 export function checkAbsolutePath(text: string, key: string): string {
   if (typeof text !== 'string' || text.length === 0 || text.length > CONFIG_LIMITS.maxPathChars) {
     throw new ConfigError('PATH', key, `${key}: path must be 1..${CONFIG_LIMITS.maxPathChars} characters`);
+  }
+  if (process.platform === 'win32') {
+    if (!isNativeAbsolutePath(text, 'win32', CONFIG_LIMITS.maxPathChars)) {
+      throw new ConfigError('PATH', key, `${key}: path must be a normalized absolute Windows drive path`);
+    }
+    return text;
   }
   if (!text.startsWith('/')) {
     throw new ConfigError('PATH', key, `${key}: path must be absolute`);
@@ -103,6 +110,13 @@ export function parseConfig(text: string): GeoramaConfig {
 
 export function configFilePath(env: Readonly<Record<string, string | undefined>>, home: string): string {
   checkAbsolutePath(home, 'home');
+  if (process.platform === 'win32') {
+    const appData = (env ?? {})['APPDATA'];
+    if (!isNativeAbsolutePath(appData, 'win32')) {
+      throw new ConfigError('PATH', 'APPDATA', 'APPDATA must be a normalized absolute Windows drive path');
+    }
+    return path.join(appData, 'georama', 'config.json');
+  }
   const xdg = (env ?? {})['XDG_CONFIG_HOME'];
   if (typeof xdg === 'string' && xdg !== '' && xdg.startsWith('/')) {
     return path.join(xdg, 'georama', 'config.json');
@@ -173,7 +187,17 @@ async function isValidRoot(dir: string, kind: RootKind): Promise<boolean> {
   return kind === 'install' ? isInstallDir(dir) : isUserDataDir(dir);
 }
 
-function installConventional(home: string): string[] {
+function installConventional(home: string, env: Readonly<Record<string, string | undefined>>): string[] {
+  if (process.platform === 'win32') {
+    const programDirs = [env['ProgramFiles'], env['ProgramFiles(x86)']]
+      .filter((value): value is string => isNativeAbsolutePath(value, 'win32'));
+    const localAppData = env['LOCALAPPDATA'];
+    return [
+      ...programDirs.map((dir) => path.join(dir, 'Wonderdraft')),
+      path.join(home, 'Games', 'Wonderdraft'),
+      ...(isNativeAbsolutePath(localAppData, 'win32') ? [path.join(localAppData, 'Programs', 'Wonderdraft')] : []),
+    ];
+  }
   return [
     path.join(home, '.steam', 'steam', 'steamapps', 'common', 'Wonderdraft'),
     path.join(home, '.local', 'share', 'Steam', 'steamapps', 'common', 'Wonderdraft'),
@@ -198,8 +222,20 @@ async function wineUserDirs(home: string): Promise<string[]> {
   }
 }
 
-async function conventionalFor(home: string, kind: RootKind): Promise<string[]> {
-  if (kind === 'install') return installConventional(home);
+async function conventionalFor(
+  home: string,
+  kind: RootKind,
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<string[]> {
+  if (kind === 'install') return installConventional(home, env);
+  if (process.platform === 'win32') {
+    const appData = env['APPDATA'];
+    const localAppData = env['LOCALAPPDATA'];
+    return [
+      ...(isNativeAbsolutePath(appData, 'win32') ? [path.join(appData, 'Wonderdraft')] : []),
+      ...(isNativeAbsolutePath(localAppData, 'win32') ? [path.join(localAppData, 'Wonderdraft')] : []),
+    ];
+  }
   return [
     ...(await wineUserDirs(home)),
     path.join(home, '.local', 'share', 'Wonderdraft'),
@@ -318,7 +354,7 @@ export function resolveRoots(opts: ResolveRootsOptions): Promise<RootsResult> {
         home = '';
       }
       if (home === '') continue;
-      for (const dir of await conventionalFor(home, kind)) {
+      for (const dir of await conventionalFor(home, kind, env)) {
         try {
           await stat(dir);
         } catch {
@@ -341,7 +377,10 @@ export function resolveRoots(opts: ResolveRootsOptions): Promise<RootsResult> {
       }
     }
 
-    if (options.scan === true) {
+    // Windows discovery is limited to explicitly configured and conventional
+    // roots. Never recurse through user-supplied drive/mount roots: ordinary
+    // path-based lstat/stat does not confine junction/reparse traversal.
+    if (options.scan === true && process.platform !== 'win32') {
       // A budget that is not a non-negative safe integer (NaN, Infinity, a fraction, a string) would void the bound: use the default.
       const requested = options.scanBudget;
       const budget = typeof requested === 'number' && Number.isSafeInteger(requested) && requested >= 0 ? requested : SCAN_ENTRY_BUDGET;

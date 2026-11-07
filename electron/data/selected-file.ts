@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
-import path from 'node:path';
+import { isNativeAbsolutePath } from '../native-path.ts';
+import { readWindowsSelectedFile } from './windows-selected-read.ts';
 
 export const SELECTED_FILE_LIMITS = Object.freeze({
   maxReadBytes: 512 * 1024 * 1024,
@@ -14,7 +15,8 @@ export type SelectedFileErrorCode =
   | 'MISSING'
   | 'TYPE'
   | 'IO'
-  | 'CHANGED';
+  | 'CHANGED'
+  | 'BUSY';
 
 export class SelectedFileError extends Error {
   readonly code: SelectedFileErrorCode;
@@ -39,20 +41,12 @@ function checkCap(maxBytes: unknown): number {
   return maxBytes;
 }
 
-const BAD_PATH = /[\x00-\x1f\x7f-\x9f\p{Surrogate}]/u;
-
 function checkFilename(filename: unknown): string {
   if (typeof filename !== 'string') {
     throw new SelectedFileError('PATH', 'Invalid selected path');
   }
   const value = filename as string;
-  if (
-    value.length === 0 ||
-    value.length > 4096 ||
-    !value.startsWith('/') ||
-    path.posix.normalize(value) !== value ||
-    BAD_PATH.test(value)
-  ) {
+  if (!isNativeAbsolutePath(value, process.platform, SELECTED_FILE_LIMITS.maxPathChars)) {
     throw new SelectedFileError('PATH', 'Invalid selected path');
   }
   if (!(value.endsWith('.json') || value.endsWith('.wonderdraft_map'))) {
@@ -117,6 +111,15 @@ async function heldStat(handle: { stat(o: unknown): Promise<unknown> }): Promise
 export async function readSelectedDataFile(filename: string, maxBytes: number): Promise<Uint8Array> {
   const cap = checkCap(maxBytes);
   const safe = checkFilename(filename);
+  // Windows has no libuv O_NOFOLLOW. A pathname lstat followed by open is not
+  // an authorization boundary, even for a directly selected local file.
+  // Use the native held-HANDLE helper with ancestor reparse checks, and never
+  // fall back to a JavaScript path open if that helper is absent or fails.
+  if (process.platform === 'win32') {
+    const outcome = await readWindowsSelectedFile(safe, cap);
+    if (outcome.bytes !== undefined) return outcome.bytes;
+    throw new SelectedFileError(outcome.error ?? 'IO', 'Could not read selected data');
+  }
   const flags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
   let handle: Awaited<ReturnType<typeof fs.open>>;
   try {

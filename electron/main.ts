@@ -8,6 +8,7 @@ import { createNavigationGuard, isEditorDocument } from './navigation-guard.ts';
 import { installNetwork } from './network.ts';
 import { installAppProtocol, registerAppScheme } from './protocol.ts';
 import { installSecurity, isTrustedAppUrl } from './security.ts';
+import { configureWindowsSelectedFileHelper } from './data/windows-selected-read.ts';
 
 app.setName(BRAND.id);
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
@@ -107,6 +108,9 @@ if (!e2e && !app.requestSingleInstanceLock()) {
     // The network lockdown must be complete before anything can load.
     await network.prepareSession(session.defaultSession);
     installAppProtocol();
+    // Selected data files require native no-follow HANDLE traversal on Windows.
+    // A missing or unsigned-to-be-reviewed helper never falls back to Node fs.
+    if (process.platform === 'win32') configureWindowsSelectedFileHelper(app.getAppPath());
     registerIpc(appInfo, () => mainWindow?.webContents ?? null, editorUrl);
     createEditorWindow();
   }).catch((error: unknown) => {
