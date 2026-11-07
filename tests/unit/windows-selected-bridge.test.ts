@@ -118,7 +118,7 @@ describe('selected-file native process confinement (host-independent mocks)', ()
     vi.mocked(spawn).mockImplementation(() => children[spawned++] as unknown as ReturnType<typeof spawn>);
     const first = onWindows(() => readWindowsSelectedFile(filename, 4));
     const second = onWindows(() => readWindowsSelectedFile(filename, 4));
-    expect(await onWindows(() => readWindowsSelectedFile(filename, 4))).toEqual({ error: 'IO' });
+    expect(await onWindows(() => readWindowsSelectedFile(filename, 4))).toEqual({ error: 'BUSY' });
     expect(spawn).toHaveBeenCalledTimes(2);
     children[0].emit('close', 0);
     expect(await first).toEqual({ bytes: new Uint8Array() });
@@ -164,7 +164,7 @@ describe('selected-file native process confinement (host-independent mocks)', ()
     await vi.advanceTimersByTimeAsync(WINDOWS_SELECTED_HELPER_LIMITS.terminationGraceMs);
     expect(await stalled).toEqual({ error: 'IO' });
     const other = onWindows(() => readWindowsSelectedFile(filename, 8));
-    expect(await onWindows(() => readWindowsSelectedFile(filename, 8))).toEqual({ error: 'IO' });
+    expect(await onWindows(() => readWindowsSelectedFile(filename, 8))).toEqual({ error: 'BUSY' });
     expect(spawn).toHaveBeenCalledTimes(2);
     children[0].emit('close', null);
     const third = onWindows(() => readWindowsSelectedFile(filename, 8));
