@@ -37,6 +37,8 @@ Windows path validation accepts only normalized drive-qualified absolute paths, 
 
 The directly selected Windows file reader now requires a separate native held-HANDLE helper. It starts at the drive root, holds every ancestor without DELETE sharing, refuses reparse points/junctions at every level, verifies each opened object's normalized final DOS path, and emits bytes only after bounded read and file-identity checks. There is no JavaScript `lstat`/`open` fallback, so a missing native binary fails closed. This is designed to close the former leaf `lstat`-then-`open` race and intermediate junction exposure; adversarial Windows tests and independent review remain necessary. The helper is **not yet signed, authenticated or packaged**; it must not be distributed or wired to untrusted renderer IPC before its provenance and release integration have been reviewed. Windows config lookup requires canonical `APPDATA`; recursive drive/mount scanning is disabled. The Linux descriptor-confined reader remains unchanged.
 
+**Release hold:** `georama-win-selected-read.exe` is unsigned and is **not for release**. Release remains blocked until the helper has **Authenticode signing** and an **independent security review** is complete. The development-only helper must not be considered authenticated merely because its application-relative path is fixed.
+
 A subsequent Windows asset backend requires independent security review and native tests for links, junctions, path replacement, archive consistency, size limits, concurrent reads and cleanup. The existing Linux backend remains unchanged.
 
 ## How it is verified
