@@ -27,11 +27,11 @@ On a native Windows terminal, with Node 22 and dependencies installed by `npm ci
 
 ## Native Windows selected files and path discovery (phase 1)
 
-This step intentionally separates **directly selected files** from **root-confined community asset packs**. On Windows, Georama can validate native `C:\\...` paths, read selected `.json` / `.wonderdraft_map` data through a held file handle with the existing byte caps and change-detection checks, parse Windows config paths, and discover configured or conventional Wonderdraft directories (`ProgramFiles`, `ProgramFiles(x86)`, `APPDATA`, `LOCALAPPDATA`, user home). Windows does **not** recursively scan supplied drives or mount roots; the bounded mount scanner remains available on non-Windows platforms. Config lookup requires a valid absolute `APPDATA` value and does not guess an `AppData` directory beneath the home path.
+This step intentionally separates **directly selected files** from **root-confined community asset packs**. On Windows, Georama can validate native `C:\\...` paths, read selected `.json` / `.wonderdraft_map` data through a native held-HANDLE helper with byte caps and change-detection checks, parse Windows config paths, and discover configured or conventional Wonderdraft directories (`ProgramFiles`, `ProgramFiles(x86)`, `APPDATA`, `LOCALAPPDATA`, user home). Windows does **not** recursively scan supplied drives or mount roots; the bounded mount scanner remains available on non-Windows platforms. Config lookup requires a valid absolute `APPDATA` value and does not guess an `AppData` directory beneath the home path.
 
 The Windows path policy currently accepts only **normalized, fully drive-qualified paths**. UNC shares, device/verbatim prefixes, drive-relative paths, alternate data streams, reserved device names, dot/dotdot segments, and trailing dot/space components are intentionally rejected. The POSIX path contract and Linux discovery remain unchanged.
 
-**Outstanding security review:** Windows selected-file symlink-leaf checks use a preliminary `lstat`, which is not an atomic no-follow open. Unlike Linux `O_NOFOLLOW`, a concurrent local actor could replace the leaf between check and open; intermediate junction/reparse points are also not excluded by that leaf-only check. This is not an adequate untrusted-file boundary and must be resolved before the feature is wired into IPC or approved for merge/release. File reads still use a single held handle after opening, with size limits, bounded read loops and held-file metadata checks. Device/UNC paths are out of scope until separately reviewed.
+**Held-HANDLE boundary:** `native/win-selected-read.cpp` starts at the selected file's drive root and opens every path component in order, keeping every ancestor handle without DELETE sharing. Each opened component is checked for a reparse-point tag, directory/file type and its final DOS path. The final file is read with bounded chunks and an identity/metadata snapshot before any bytes are emitted. The Node caller never uses a pathname `lstat`/`open` fallback; missing or failing helpers refuse the read. This closes the earlier leaf `lstat`-then-`open` race and intermediate junction traversal at the native-file boundary, subject to adversarial Windows CI and independent review. Device/UNC paths remain out of scope. The helper is **not signed/authenticated or packaged for release** in this phase; signing/provenance and complete package integration remain separate release blockers. No renderer IPC is introduced here.
 
 **Asset packs remain fail-closed on Windows.** `readAssetFile()` and `openPckFile()` still explicitly reject non-Linux platforms before filesystem I/O. Root detection does not grant a read capability. A subsequent security-reviewed Windows backend must preserve confined asset-root reads, reparse-point resistance, bounded reads and handle identity, without weakening the existing Linux backend.
 
@@ -39,6 +39,7 @@ Windows Node 22 checks:
 
 ```powershell
 npm run build
+node scripts/build-win-selected-helper.mjs
 npx vitest run tests/unit/native-path.test.ts tests/unit/windows-selected-files.test.ts
 ```
 

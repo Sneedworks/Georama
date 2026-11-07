@@ -32,6 +32,9 @@ jobs:
       - run: npm run build
       - name: Shared path policy
         run: npx vitest run tests/unit/native-path.test.ts
+      - name: Build native held-handle Windows selected-file reader
+        if: runner.os == 'Windows'
+        run: node scripts/build-win-selected-helper.mjs
       - name: Native Windows selected-map/config and root-discovery tests
         if: runner.os == 'Windows'
         run: npx vitest run tests/unit/windows-selected-files.test.ts
