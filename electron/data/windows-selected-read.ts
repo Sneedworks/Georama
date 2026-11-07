@@ -97,7 +97,11 @@ export function readWindowsSelectedFile(
       forcedError = error;
       chunks.length = 0;
       try { child.kill(); } catch { /* the close/grace path remains fail-closed */ }
-      grace = setTimeout(() => finish({ error }), WINDOWS_SELECTED_HELPER_LIMITS.terminationGraceMs);
+      // kill() can synchronously trigger close in some subprocess adapters.
+      // Do not allocate an orphaned grace timer after close has settled us.
+      if (!settled) {
+        grace = setTimeout(() => finish({ error }), WINDOWS_SELECTED_HELPER_LIMITS.terminationGraceMs);
+      }
     };
     const watchdog = setTimeout(() => terminate('IO'), WINDOWS_SELECTED_HELPER_LIMITS.timeoutMs);
 
