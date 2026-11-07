@@ -15,7 +15,8 @@ export type SelectedFileErrorCode =
   | 'MISSING'
   | 'TYPE'
   | 'IO'
-  | 'CHANGED';
+  | 'CHANGED'
+  | 'BUSY';
 
 export class SelectedFileError extends Error {
   readonly code: SelectedFileErrorCode;

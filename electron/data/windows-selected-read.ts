@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { isNativeAbsolutePath } from '../native-path.ts';
 
-export type WindowsSelectedReadError = 'PATH' | 'EXTENSION' | 'LIMIT' | 'MISSING' | 'TYPE' | 'IO' | 'CHANGED';
+export type WindowsSelectedReadError = 'PATH' | 'EXTENSION' | 'LIMIT' | 'MISSING' | 'TYPE' | 'IO' | 'CHANGED' | 'BUSY';
 export interface WindowsSelectedReadResult {
   readonly bytes?: Uint8Array;
   readonly error?: WindowsSelectedReadError;
@@ -56,7 +56,7 @@ export function readWindowsSelectedFile(
     return Promise.resolve({ error: 'LIMIT' });
   }
   if (activeHelpers >= WINDOWS_SELECTED_HELPER_LIMITS.maxConcurrent) {
-    return Promise.resolve({ error: 'IO' });
+    return Promise.resolve({ error: 'BUSY' });
   }
 
   activeHelpers += 1;
