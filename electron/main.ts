@@ -109,9 +109,13 @@ if (!e2e && !app.requestSingleInstanceLock()) {
     // The network lockdown must be complete before anything can load.
     await network.prepareSession(session.defaultSession);
     installAppProtocol();
-    if (process.platform === 'win32') configureWindowsAssetHelper(app.getAppPath());
     registerIpc(appInfo, () => mainWindow?.webContents ?? null, editorUrl);
-    registerAssetIpc(() => mainWindow?.webContents ?? null, () => mainWindow, editorUrl);
+    // The native asset IPC capability is experimental and Windows-only.
+    // Never expose its handlers where the held-handle backend is unavailable.
+    if (process.platform === 'win32') {
+      configureWindowsAssetHelper(app.getAppPath());
+      registerAssetIpc(() => mainWindow?.webContents ?? null, () => mainWindow, editorUrl);
+    }
     createEditorWindow();
   }).catch((error: unknown) => {
     console.error('Application startup failed:', error);
