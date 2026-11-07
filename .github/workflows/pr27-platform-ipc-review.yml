@@ -21,6 +21,11 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Configure the Linux Chromium setuid sandbox
+        if: runner.os == 'Linux'
+        run: |
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - name: Build native helper for Windows
         if: runner.os == 'Windows'
         run: node scripts/build-win-asset-helper.mjs
