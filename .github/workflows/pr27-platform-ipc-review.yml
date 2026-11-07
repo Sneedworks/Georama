@@ -24,6 +24,7 @@ jobs:
       - name: Configure the Linux Chromium setuid sandbox
         if: runner.os == 'Linux'
         run: |
+          node -e "require('electron')"
           sudo chown root:root node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - name: Build native helper for Windows
