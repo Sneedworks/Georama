@@ -55,7 +55,7 @@ describe('core colour grade', () => {
     expect(Array.from(minus)).toEqual([0, 0, 255, 255]);
   });
 
-  it('saturation 0 maps (200,100,50) to grey (200,200,200)', () => {
+  it('saturation 0 maps a warm mid tone to a flat grey', () => {
     const out = gradeRgba8(new Uint8Array([200, 100, 50, 255]), 1, 1, { ...IDENTITY, sat: 0 });
     expect(Array.from(out)).toEqual([200, 200, 200, 255]);
   });
