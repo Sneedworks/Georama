@@ -29,10 +29,15 @@ let activeHelpers = 0;
  */
 export function configureWindowsSelectedFileHelper(appRoot: string): void {
   if (configuredHelper !== undefined) throw new Error('Windows selected-file helper already configured');
-  if (!isNativeAbsolutePath(appRoot, 'win32')) {
+  // fileURLToPath(directoryURL) may retain one terminal separator. Accept that
+  // directory spelling, but reject other noncanonical or ambiguous forms.
+  const root = typeof appRoot === 'string' && appRoot.length > 3 && appRoot.endsWith('\\')
+    ? appRoot.slice(0, -1)
+    : appRoot;
+  if (!isNativeAbsolutePath(root, 'win32')) {
     throw new Error('Windows selected-file helper requires a canonical absolute application root');
   }
-  configuredHelper = path.win32.join(appRoot, 'out', 'windows', 'georama-win-selected-read.exe');
+  configuredHelper = path.win32.join(root, 'out', 'windows', 'georama-win-selected-read.exe');
 }
 
 /**
