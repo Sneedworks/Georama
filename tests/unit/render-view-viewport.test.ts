@@ -62,6 +62,16 @@ describe('fitView', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('LIMIT');
   });
+
+  it('rejects horizontal translation overflow from finite dimensions as LIMIT', () => {
+    const r = fitView(1.7191700431418136e308, 1, Number.MAX_VALUE, Number.MAX_VALUE);
+    expect(r).toMatchObject({ ok: false, code: 'LIMIT' });
+  });
+
+  it('rejects vertical translation overflow from finite dimensions as LIMIT', () => {
+    const r = fitView(1, 1.7191700431418136e308, Number.MAX_VALUE, Number.MAX_VALUE);
+    expect(r).toMatchObject({ ok: false, code: 'LIMIT' });
+  });
 });
 
 describe('oneToOne', () => {
@@ -85,6 +95,15 @@ describe('oneToOne', () => {
     const r = oneToOne(1024, Number.NaN, 512, 512);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('INPUT');
+  });
+
+  it('keeps translations finite for extreme finite dimensions', () => {
+    const r = oneToOne(Number.MAX_VALUE, 1, 1, Number.MAX_VALUE);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(Number.isFinite(r.view.tx)).toBe(true);
+      expect(Number.isFinite(r.view.ty)).toBe(true);
+    }
   });
 });
 

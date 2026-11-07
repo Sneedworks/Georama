@@ -96,12 +96,16 @@ function checkPath(path: string, at: number): void {
     if (code <= 0x1f || code === 0x7f) fail('FORMAT', `Bad PCK path at ${at}`, at);
   }
   if (path.endsWith('/')) fail('FORMAT', `Bad PCK path at ${at}`, at);
-  const rest = path.slice(PREFIX.length);
-  const segments = rest.split('/');
-  for (const segment of segments) {
-    if (segment.length === 0 || segment === '.' || segment === '..') {
+  // Validate segments without allocating an array and substrings for every entry.
+  let start = PREFIX.length;
+  for (let i = start; i <= path.length; i++) {
+    if (i !== path.length && path.charCodeAt(i) !== 47) continue;
+    const length = i - start;
+    if (length === 0 || (length === 1 && path.charCodeAt(start) === 46)
+      || (length === 2 && path.charCodeAt(start) === 46 && path.charCodeAt(start + 1) === 46)) {
       fail('FORMAT', `Bad PCK path at ${at}`, at);
     }
+    start = i + 1;
   }
 }
 

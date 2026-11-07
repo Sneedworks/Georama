@@ -117,25 +117,74 @@ function coastFlags(land: Uint8Array, width: number, height: number): { coastLan
   return { coastLand, coastWater };
 }
 
-/** Summed-area table over a 0/1 flag array: sat[(y+1)*(w+1)+(x+1)] sums rows 0..y, cols 0..x. */
-function summedArea(flags: Uint8Array, width: number, height: number): Float64Array {
+/** Summed-area table over a 0/1 flag array: sat[(y+1)*(w+1)+(x+1)] sums rows 0..y, cols 0..x.
+ * Each prefix count is at most width*height. Use half-sized Uint32 storage
+ * when every count fits; retain Float64 for theoretical larger inputs.
+ */
+function summedArea(maskBytes: Uint8Array, width: number, height: number, threshold: number): Uint32Array | Float64Array {
   const stride = width + 1;
-  const sat = new Float64Array((width + 1) * (height + 1));
+  const length = (width + 1) * (height + 1);
+  const sat = width * height <= 0xffff_ffff ? new Uint32Array(length) : new Float64Array(length);
   for (let y = 0; y < height; y++) {
     let rowSum = 0;
+    const maskRow = y * width * 4 + 3;
     for (let x = 0; x < width; x++) {
-      rowSum += flags[y * width + x];
+      rowSum += maskBytes[maskRow + x * 4] >= threshold ? 1 : 0;
       sat[(y + 1) * stride + (x + 1)] = sat[y * stride + (x + 1)] + rowSum;
     }
   }
   return sat;
 }
 
-function rectSum(sat: Float64Array, width: number, x0: number, y0: number, size: number): number {
+function rectSum(sat: Uint32Array | Float64Array, width: number, x0: number, y0: number, size: number): number {
   const stride = width + 1;
   const x1 = x0 + size;
   const y1 = y0 + size;
   return sat[y1 * stride + x1] - sat[y0 * stride + x1] - sat[y1 * stride + x0] + sat[y0 * stride + x0];
+}
+
+/**
+ * Build the coastline summed-area table directly from the land table. A texel
+ * touches the opposite class iff its clipped Chebyshev-radius neighborhood is
+ * not entirely land (for land), or contains any land (for water). Including
+ * the center does not alter this test.
+ *
+ * Avoids the three full-map byte arrays previously needed for coastLand,
+ * coastWater and their combined flags.
+ */
+function coastSummedArea(
+  maskBytes: Uint8Array,
+  landSat: Uint32Array | Float64Array,
+  width: number,
+  height: number,
+  threshold: number,
+): Uint32Array | Float64Array {
+  const stride = width + 1;
+  // Match the land SAT's exact count representation, including PR #18's
+  // Uint32 optimization and its Float64 fallback for very large rasters.
+  const length = stride * (height + 1);
+  const sat = landSat instanceof Uint32Array ? new Uint32Array(length) : new Float64Array(length);
+  for (let y = 0; y < height; y++) {
+    const top = Math.max(0, y - COAST_RADIUS);
+    const bottom = Math.min(height, y + COAST_RADIUS + 1);
+    const topRow = top * stride;
+    const bottomRow = bottom * stride;
+    const previousRow = y * stride;
+    const currentRow = (y + 1) * stride;
+    let rowSum = 0;
+    for (let x = 0; x < width; x++) {
+      const left = Math.max(0, x - COAST_RADIUS);
+      const right = Math.min(width, x + COAST_RADIUS + 1);
+      const nearbyLand =
+        landSat[bottomRow + right] - landSat[topRow + right] -
+        landSat[bottomRow + left] + landSat[topRow + left];
+      const isLand = maskBytes[(y * width + x) * 4 + 3] >= threshold;
+      const allLand = nearbyLand === (right - left) * (bottom - top);
+      if (isLand ? !allLand : nearbyLand !== 0) rowSum++;
+      sat[currentRow + x + 1] = sat[previousRow + x + 1] + rowSum;
+    }
+  }
+  return sat;
 }
 
 export function selectWindow(
@@ -149,14 +198,10 @@ export function selectWindow(
   assertExtent(size, 'size');
   assertExtent(stride, 'stride');
   const { width, height } = mask;
-  const land = landMask(mask, threshold);
-  const { coastLand, coastWater } = coastFlags(land, width, height);
-  const landSat = summedArea(land, width, height);
-  const coastSat = summedArea(
-    coastLand.map((v, i) => v + coastWater[i]),
-    width,
-    height,
-  );
+  // Read classifications directly from the mask's alpha channel. No full-map
+  // land-byte allocation is needed while building the two summed-area tables.
+  const landSat = summedArea(mask.data, width, height, threshold);
+  const coastSat = coastSummedArea(mask.data, landSat, width, height, threshold);
   const area = size * size;
   let best: WindowPick | null = null;
   for (let y0 = 0; y0 + size <= height; y0 += stride) {
@@ -205,9 +250,27 @@ export function buildFirstLightLayers(input: FirstLightInput): FirstLightOutput 
   ) {
     throw new RangeError('the window must sit fully inside the map');
   }
-  const land = landMask(input.mask, input.threshold);
-  const { coastLand, coastWater } = coastFlags(land, mapWidth, mapHeight);
   const { x0, y0, width, height } = input;
+
+  // Only output texels and their COAST_RADIUS neighborhood affect the result.
+  // Clip the halo to the actual map borders, so an edge window sees precisely
+  // the same in-map neighbors as a full-map coastline classification.
+  const haloX0 = Math.max(0, x0 - COAST_RADIUS);
+  const haloY0 = Math.max(0, y0 - COAST_RADIUS);
+  const haloX1 = Math.min(mapWidth, x0 + width + COAST_RADIUS);
+  const haloY1 = Math.min(mapHeight, y0 + height + COAST_RADIUS);
+  const haloWidth = haloX1 - haloX0;
+  const haloHeight = haloY1 - haloY0;
+  const land = new Uint8Array(haloWidth * haloHeight);
+  const maskBytes = input.mask.data;
+  for (let y = 0; y < haloHeight; y++) {
+    const sourceRow = ((haloY0 + y) * mapWidth + haloX0) * 4;
+    const destRow = y * haloWidth;
+    for (let x = 0; x < haloWidth; x++) {
+      land[destRow + x] = maskBytes[sourceRow + x * 4 + 3] >= input.threshold ? 1 : 0;
+    }
+  }
+  const { coastLand, coastWater } = coastFlags(land, haloWidth, haloHeight);
   const maskOut = new Uint8Array(width * height * 4);
   const groundOut = new Uint8Array(width * height * 4);
   const waterOut = new Uint8Array(width * height * 4);
@@ -220,7 +283,7 @@ export function buildFirstLightLayers(input: FirstLightInput): FirstLightOutput 
     for (let col = 0; col < width; col++) {
       const mapI = ((y0 + row) * mapWidth + (x0 + col)) * 4;
       const outI = (row * width + col) * 4;
-      const flat = (y0 + row) * mapWidth + (x0 + col);
+      const flat = (y0 + row - haloY0) * haloWidth + (x0 + col - haloX0);
       const isLand = land[flat] === 1;
       if (isLand) {
         landCount++;

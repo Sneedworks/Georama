@@ -1,5 +1,62 @@
+import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
+import { createContext, Script } from 'node:vm';
 import { describe, expect, it } from 'vitest';
-import { jumpFloodReference, validateClassGrid } from '../../src/core/sdf/jfa.ts';
+import {
+  jumpFloodReference as jumpFloodReferenceRaw,
+  validateClassGrid,
+  type ClassGrid,
+  type JfaVerdict,
+} from '../../src/core/sdf/jfa.ts';
+
+// Watchdog for the cover loop (jfa.ts lines 89 to 93: `while (cover < side) { passes += 1; cover *= 2; }`). Its
+// mutants never return, and a hang in any test stops the whole file before its expectations run. Valid grids
+// therefore run the module's own source in a vm realm with a CPU budget. A call over budget returns a failing
+// verdict, so each expectation that needs ok: true fails, and the file completes. The source is read when the file
+// loads, so a mutated copy is the code that runs. Invalid grids never reach the loop, so they go straight to the raw
+// function.
+const JFA_BUDGET_MS = 1000;
+type JfaRealm = {
+  __w?: unknown;
+  __h?: unknown;
+  __buf?: ArrayBufferLike;
+  __off?: number;
+  __len?: number;
+  __out?: { ok: boolean; code?: string; message?: string; seeds?: Uint16Array; outline?: Uint8Array };
+};
+const jfaSource = readFileSync(new URL('../../src/core/sdf/jfa.ts', import.meta.url), 'utf8');
+const jfaRealm = createContext({}) as JfaRealm;
+new Script(
+  stripTypeScriptTypes(jfaSource).replace(/^export /gm, '') +
+    '\n;globalThis.__jfa = { jumpFloodReference, validateClassGrid };',
+).runInContext(jfaRealm);
+const jfaPrepare = new Script('__grid = { width: __w, height: __h, land: new Uint8Array(__buf, __off, __len) };');
+const jfaCall = new Script('__out = __jfa.jumpFloodReference(__grid);');
+let jfaTripped = false;
+
+function jumpFloodReference(grid: ClassGrid): JfaVerdict {
+  const land: unknown = typeof grid === 'object' && grid !== null ? grid.land : undefined;
+  if (!(land instanceof Uint8Array)) return jumpFloodReferenceRaw(grid);
+  if (jfaTripped) return { ok: false, code: 'INPUT', message: 'watchdog: an earlier call did not return' };
+  Object.assign(jfaRealm, {
+    __w: grid.width,
+    __h: grid.height,
+    __buf: land.buffer,
+    __off: land.byteOffset,
+    __len: land.length,
+  });
+  jfaPrepare.runInContext(jfaRealm);
+  try {
+    jfaCall.runInContext(jfaRealm, { timeout: JFA_BUDGET_MS });
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'ERR_SCRIPT_EXECUTION_TIMEOUT') throw error;
+    jfaTripped = true;
+    return { ok: false, code: 'INPUT', message: `watchdog: jumpFloodReference did not return within ${JFA_BUDGET_MS} ms` };
+  }
+  const out = jfaRealm.__out as NonNullable<JfaRealm['__out']>;
+  if (!out.ok) return { ok: false, code: out.code as 'INPUT' | 'LIMIT', message: out.message as string };
+  return { ok: true, seeds: new Uint16Array(out.seeds as Uint16Array), outline: new Uint8Array(out.outline as Uint8Array) };
+}
 
 describe('jfa hand example outline', () => {
   it('marks the coast around a single land texel', () => {
@@ -117,6 +174,31 @@ describe('jfa validate LIMIT rules', () => {
 });
 
 describe('jfa edge grids', () => {
+  it.each([0, 1])('uniform %i grid retains sentinel seeds over a large non-square extent', (value) => {
+    const width = 257;
+    const height = 129;
+    const land = new Uint8Array(width * height).fill(value);
+    const verdict = jumpFloodReference({ width, height, land });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.outline).toHaveLength(width * height);
+    expect(verdict.seeds).toHaveLength(2 * width * height);
+    expect(verdict.outline.every((byte) => byte === 0)).toBe(true);
+    expect(verdict.seeds.every((coord) => coord === 65535)).toBe(true);
+  });
+
+  it('does not treat a far-corner island as a uniform grid', () => {
+    const width = 257;
+    const height = 129;
+    const land = new Uint8Array(width * height);
+    land[land.length - 1] = 1;
+    const verdict = jumpFloodReference({ width, height, land });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.outline[land.length - 1]).toBe(255);
+    expect(verdict.seeds.some((coord) => coord !== 65535)).toBe(true);
+  });
+
   it('empty grid has no coast and no seeds', () => {
     const width = 2;
     const height = 3;
@@ -425,5 +507,19 @@ describe('jfa strength: mutation gap classes', () => {
     expect(Array.from(v.outline)).toEqual([255, 0, 0, 0, 0, 255, 255, 0, 0, 0, 255, 255, 255, 0, 255, 0, 255, 255, 255, 255]);
     expect(Array.from(v.seeds)).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 4, 2, 0, 1, 1, 1, 1, 1, 2, 2, 4, 2, 0, 2, 1, 2, 2, 2, 2, 2, 4, 2, 0, 2, 1, 3, 2, 3, 3, 3, 4, 3]);
     expect([v.seeds[16], v.seeds[17]]).toEqual([2, 2]);
+  });
+});
+
+describe('jfa cover loop terminates (watchdog pins)', () => {
+  it('a 1x1 grid returns ok within the budget (kills cover = 0)', () => {
+    const v = jumpFloodReference({ width: 1, height: 1, land: new Uint8Array([0]) });
+    expect(v.ok).toBe(true);
+  });
+
+  it('a 2x2 grid returns ok within the budget with the expected seeds (kills cover = 0 and cover *= 1)', () => {
+    const v = jumpFloodReference({ width: 2, height: 2, land: new Uint8Array([1, 0, 0, 0]) });
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(Array.from(v.seeds)).toEqual([0, 0, 1, 0, 0, 1, 1, 0]);
   });
 });

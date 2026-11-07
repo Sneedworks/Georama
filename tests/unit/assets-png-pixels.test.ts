@@ -183,6 +183,47 @@ describe('png pixel decoder', () => {
     ]);
   });
 
+  it.each([127, 128])('preserves every filter-0 RGBA row exactly at width %i', (width) => {
+    const height = 5;
+    const samples = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        samples[i] = (31 * x + 17 * y) & 255;
+        samples[i + 1] = (7 * x + 53 * y + 1) & 255;
+        samples[i + 2] = (97 * x + 11 * y + 2) & 255;
+        samples[i + 3] = (13 * x + 79 * y + 3) & 255;
+      }
+    }
+    const raw = rawNone(width, height, 6, Array.from(samples));
+    for (let y = 0; y < height; y++) expect(raw[y * (1 + width * 4)]).toBe(0);
+
+    // 127 pixels uses the ordinary copy-out path; 128 reaches the in-place
+    // row-compaction path. Both must preserve the unfiltered bytes verbatim.
+    for (const level of [0, 9]) {
+      const png = testPng({ width, height, colorType: 6, raw, level, idatSplit: 5 });
+      const before = png.slice();
+      const decoded = decodePngRgba8(png);
+      expect(decoded.width).toBe(width);
+      expect(decoded.height).toBe(height);
+      expect(decoded.rgba).toEqual(samples);
+      expect(png).toEqual(before);
+    }
+  });
+
+  it('decodes single and split IDAT streams identically without changing the PNG input', () => {
+    const data = Array.from({ length: 16 * 16 * 4 }, (_, i) => (i * 43 + 17) & 255);
+    const raw = rawNone(16, 16, 6, data);
+    const options = { width: 16, height: 16, colorType: 6, raw, level: 0 };
+    const single = testPng(options);
+    const inputBefore = single.slice();
+    const split = testPng({ ...options, idatSplit: 5 });
+    const decoded = decodePngRgba8(single).rgba;
+    expect(decoded).toEqual(Uint8Array.from(data));
+    expect(decodePngRgba8(split).rgba).toEqual(decoded);
+    expect(single).toEqual(inputBefore);
+  });
+
   it('decodes compressed RGB exactly', () => {
     const raw = rawNone(3, 1, 2, [5, 15, 25, 35, 45, 55, 65, 75, 85]);
     const decoded = decodePngRgba8(testPng({ width: 3, height: 1, colorType: 2, raw, level: 9 }));
@@ -235,7 +276,7 @@ describe('png pixel decoder', () => {
     );
   });
 
-  it('reverses every filter type across five rows', () => {
+  it.each([2, 6])('reverses every filter type across five rows (color type %i)', (colorType) => {
     const rows: number[][] = [
       [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120],
       [5, 15, 25, 35, 45, 55, 65, 75, 85, 95, 105, 115],
@@ -243,13 +284,18 @@ describe('png pixel decoder', () => {
       [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
       [250, 251, 252, 240, 241, 242, 230, 231, 232, 220, 221, 222],
     ];
-    const channels = 3;
-    const filtered = new Uint8Array(5 * (1 + 12));
+    const channels = colorType === 2 ? 3 : 4;
+    const width = colorType === 6 ? 128 : 4;
+    const rowSize = width * channels;
+    const scanlines = rows.map((row) =>
+      Array.from({ length: rowSize }, (_, i) => row[i % row.length]),
+    );
+    const filtered = new Uint8Array(5 * (1 + rowSize));
     let prev: Uint8Array | null = null;
     for (let y = 0; y < 5; y++) {
-      const samples = new Uint8Array(rows[y]);
-      const out = new Uint8Array(12);
-      for (let i = 0; i < 12; i++) {
+      const samples = new Uint8Array(scanlines[y]);
+      const out = new Uint8Array(rowSize);
+      for (let i = 0; i < rowSize; i++) {
         const left = i >= channels ? samples[i - channels] : 0;
         const up = prev ? prev[i] : 0;
         const upLeft = i >= channels && prev ? prev[i - channels] : 0;
@@ -267,16 +313,20 @@ describe('png pixel decoder', () => {
         }
         out[i] = value & 255;
       }
-      filtered[y * 13] = y;
-      filtered.set(out, y * 13 + 1);
+      filtered[y * (rowSize + 1)] = y;
+      filtered.set(out, y * (rowSize + 1) + 1);
       prev = samples;
     }
-    const decoded = decodePngRgba8(testPng({ width: 4, height: 5, colorType: 2, raw: filtered }));
+    const decoded = decodePngRgba8(testPng({ width, height: 5, colorType, raw: filtered }));
     const expected: number[] = [];
-    for (const row of rows) {
-      for (let p = 0; p < 4; p++) expected.push(row[p * 3], row[p * 3 + 1], row[p * 3 + 2], 255);
+    for (const row of scanlines) {
+      if (colorType === 6) {
+        expected.push(...row);
+      } else {
+        for (let p = 0; p < width; p++) expected.push(row[p * 3], row[p * 3 + 1], row[p * 3 + 2], 255);
+      }
     }
-    expect(decoded.width).toBe(4);
+    expect(decoded.width).toBe(width);
     expect(decoded.height).toBe(5);
     expect(Array.from(decoded.rgba)).toEqual(expected);
   });

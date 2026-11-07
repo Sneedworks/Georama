@@ -1,0 +1,38 @@
+name: Launcher portability
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'feat/windows-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Do not spend runner minutes on superseded feature-branch commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  launcher:
+    name: Launcher on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Portable launcher contracts, without treating known Linux-only unit
+      # suites as successful native-Windows security verification.
+      - run: npx vitest run tests/unit/launcher-platform.test.ts tests/unit/launcher-display.test.ts
+      - name: Real native Windows Electron launch and IPC smoke
+        if: runner.os == 'Windows'
+        run: node tests/e2e/windows-launch.mjs

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { isNativeAbsolutePath } from '../native-path.ts';
+import { readWindowsSelectedFile } from './windows-selected-read.ts';
 
 export const SELECTED_FILE_LIMITS = Object.freeze({
   maxReadBytes: 512 * 1024 * 1024,
@@ -109,21 +110,16 @@ async function heldStat(handle: { stat(o: unknown): Promise<unknown> }): Promise
 export async function readSelectedDataFile(filename: string, maxBytes: number): Promise<Uint8Array> {
   const cap = checkCap(maxBytes);
   const safe = checkFilename(filename);
-  // Windows does not expose the Linux O_NOFOLLOW guarantee. A preflight
-  // rejects ordinary symlink leaves but is NOT race-proof. This API reads
-  // explicitly selected files, not files confined beneath an asset root.
+  // Windows has no libuv O_NOFOLLOW. A pathname lstat followed by open is not
+  // an authorization boundary, even for a directly selected local file.
+  // Use the native held-HANDLE helper with ancestor reparse checks, and never
+  // fall back to a JavaScript path open if that helper is absent or fails.
   if (process.platform === 'win32') {
-    let leaf: Awaited<ReturnType<typeof fs.lstat>>;
-    try {
-      leaf = await fs.lstat(safe);
-    } catch (error) {
-      throw toOpenError(error);
-    }
-    if (leaf.isSymbolicLink()) throw new SelectedFileError('PATH', 'Selected path contains a link');
+    const outcome = await readWindowsSelectedFile(safe, cap);
+    if (outcome.bytes !== undefined) return outcome.bytes;
+    throw new SelectedFileError(outcome.error ?? 'IO', 'Could not read selected data');
   }
-  const flags = process.platform === 'win32'
-    ? constants.O_RDONLY
-    : constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+  const flags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
   let handle: Awaited<ReturnType<typeof fs.open>>;
   try {
     handle = await fs.open(safe, flags);

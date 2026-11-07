@@ -9,6 +9,7 @@ import { createNavigationGuard, isEditorDocument } from './navigation-guard.ts';
 import { installNetwork } from './network.ts';
 import { installAppProtocol, registerAppScheme } from './protocol.ts';
 import { installSecurity, isTrustedAppUrl } from './security.ts';
+import { configureWindowsSelectedFileHelper } from './data/windows-selected-read.ts';
 
 app.setName(BRAND.id);
 app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
@@ -108,7 +109,13 @@ if (!e2e && !app.requestSingleInstanceLock()) {
     // The network lockdown must be complete before anything can load.
     await network.prepareSession(session.defaultSession);
     installAppProtocol();
-    if (process.platform === 'win32') configureWindowsAssetHelper(app.getAppPath());
+    // Both experimental Windows readers use native held-HANDLE traversal.
+    // A missing helper fails closed, never falling back to a JavaScript path read.
+    if (process.platform === 'win32') {
+      const appRoot = app.getAppPath();
+      configureWindowsSelectedFileHelper(appRoot);
+      configureWindowsAssetHelper(appRoot);
+    }
     registerIpc(appInfo, () => mainWindow?.webContents ?? null, editorUrl);
     createEditorWindow();
   }).catch((error: unknown) => {

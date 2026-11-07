@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isNativeAbsolutePath } from '../../electron/native-path.ts';
+import { vcvarsCommand } from '../../scripts/msvc-environment.mjs';
 
 describe('canonical native absolute path policy', () => {
   it.each([
@@ -65,4 +66,27 @@ describe('canonical native absolute path policy', () => {
       expect(isNativeAbsolutePath(bad, 'linux')).toBe(false);
     }
   });
+});
+
+describe('Windows native-helper build command', () => {
+  const vcvars = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\VC\\vcvars64.bat';
+  const node = 'C:\\Program Files\\nodejs\\node.exe';
+  const verify = 'E:\\Georama Workspace\\scripts\\check.mjs';
+
+  it('keeps standard spaced and parenthesized MSVC paths quoted', () => {
+    const command = vcvarsCommand(vcvars, node, verify, ['/nologo']);
+    expect(command.command).toBe('cmd.exe');
+    expect(command.args[2]).toContain(`call "${vcvars}" >nul`);
+    expect(command.options).toEqual({ windowsVerbatimArguments: true });
+  });
+
+  it.each(['%', '!', '^', '&', '|', '<', '>', '"', '\r', '\n', '\0'])(
+    'rejects shell expansion or control character %j in command arguments',
+    (character) => {
+      expect(() => vcvarsCommand(vcvars + character, node, verify, ['/nologo'])).toThrow(TypeError);
+      expect(() => vcvarsCommand(vcvars, node + character, verify, ['/nologo'])).toThrow(TypeError);
+      expect(() => vcvarsCommand(vcvars, node, verify + character, ['/nologo'])).toThrow(TypeError);
+      expect(() => vcvarsCommand(vcvars, node, verify, ['/nologo' + character])).toThrow(TypeError);
+    },
+  );
 });

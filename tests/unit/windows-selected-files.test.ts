@@ -1,19 +1,30 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { checkAbsolutePath, configFilePath, parseConfig, resolveRoots } from '../../electron/assets/config.ts';
 import { createAssetStore } from '../../electron/assets/store.ts';
 import { openPckFile } from '../../electron/assets/pck-file.ts';
 import { readSelectedConfigFile } from '../../electron/data/config-file.ts';
 import { readSelectedDataFile, SelectedFileError } from '../../electron/data/selected-file.ts';
+import { configureWindowsSelectedFileHelper } from '../../electron/data/windows-selected-read.ts';
 
+const checkoutRoot = fileURLToPath(new URL('../../', import.meta.url));
+const nativeHelper = path.join(checkoutRoot, 'out', 'windows', 'georama-win-selected-read.exe');
 const roots: string[] = [];
 async function fixture(): Promise<string> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'georama-windows-files-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'georama-windows-files-')));
   roots.push(root);
   return root;
 }
+beforeAll(async () => {
+  if (process.platform === 'win32') {
+    configureWindowsSelectedFileHelper(checkoutRoot);
+    await fs.access(nativeHelper);
+  }
+});
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
@@ -49,13 +60,19 @@ describe.skipIf(process.platform !== 'win32')('native Windows file and root boun
     expect(() => checkAbsolutePath('C:relative', 'install')).toThrow();
   });
 
-  it('locates config under APPDATA with a safe fallback, ignoring XDG', async () => {
+  it('locates config only under a valid APPDATA directory, ignoring XDG', async () => {
     const root = await fixture();
     const appData = path.join(root, 'AppData', 'Roaming');
     expect(configFilePath({ APPDATA: appData, XDG_CONFIG_HOME: '/ignored' }, root))
       .toBe(path.join(appData, 'georama', 'config.json'));
-    expect(configFilePath({ APPDATA: 'C:relative' }, root))
-      .toBe(path.join(root, 'AppData', 'Roaming', 'georama', 'config.json'));
+    for (const env of [{ APPDATA: 'C:relative' }, {}]) {
+      try {
+        configFilePath(env, root);
+        expect.unreachable('an unset or invalid APPDATA must fail closed');
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'PATH', key: 'APPDATA' });
+      }
+    }
   });
 
   it('discovers Windows Wonderdraft folders via ProgramFiles and APPDATA', async () => {
@@ -110,21 +127,103 @@ describe.skipIf(process.platform !== 'win32')('native Windows file and root boun
     expect(open).not.toHaveBeenCalled();
   });
 
-  it('rejects an explicitly selected link leaf before opening it', async () => {
+  it('refuses a leaf symlink with a held native handle, without a JavaScript path preflight', async () => {
     const root = await fixture();
-    const filename = path.join(root, 'map.json');
-    await fs.writeFile(filename, '{}');
-    const lstat = vi.spyOn(fs, 'lstat').mockResolvedValueOnce({
-      isSymbolicLink: () => true,
-    } as Awaited<ReturnType<typeof fs.lstat>>);
+    const target = path.join(root, 'target.json');
+    const filename = path.join(root, 'link.json');
+    await fs.writeFile(target, 'PRIVATE');
+    try {
+      await fs.symlink(target, filename, 'file');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return;
+      throw error;
+    }
+    const lstat = vi.spyOn(fs, 'lstat');
     const open = vi.spyOn(fs, 'open');
-    await expect(readSelectedDataFile(filename, 5)).rejects.toBeInstanceOf(SelectedFileError);
+    await expect(readSelectedDataFile(filename, 16)).rejects.toMatchObject({ code: 'PATH' });
     await expect(readSelectedDataFile('C:relative.json', 5)).rejects.toMatchObject({ code: 'PATH' });
-    expect(lstat).toHaveBeenCalledWith(filename);
+    expect(lstat).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });
 
-  it('accepts a native Windows mount for bounded conventional root scanning', async () => {
+  it('refuses intermediate junctions and a selected file reached through an ancestor junction', async () => {
+    const root = await fixture();
+    const outside = path.join(root, 'outside');
+    const holder = path.join(root, 'holder');
+    await fs.mkdir(outside);
+    await fs.mkdir(holder);
+    await fs.writeFile(path.join(outside, 'private.json'), 'PRIVATE');
+    await fs.symlink(outside, path.join(holder, 'redirect'), 'junction');
+    await expect(readSelectedDataFile(path.join(holder, 'redirect', 'private.json'), 16))
+      .rejects.toMatchObject({ code: 'PATH' });
+    await fs.symlink(root, path.join(root, 'alias'), 'junction');
+    await expect(readSelectedDataFile(path.join(root, 'alias', 'outside', 'private.json'), 16))
+      .rejects.toMatchObject({ code: 'PATH' });
+  });
+
+  it('never returns redirected bytes during concurrent parent-directory replacement', async () => {
+    const root = await fixture();
+    const pack = path.join(root, 'pack');
+    const parked = path.join(root, 'parked');
+    const outside = path.join(root, 'outside');
+    await fs.mkdir(pack);
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(pack, 'map.json'), 'INSIDE');
+    await fs.writeFile(path.join(outside, 'map.json'), 'OUTSIDE-SECRET');
+    for (let round = 0; round < 12; round++) {
+      const attempt = readSelectedDataFile(path.join(pack, 'map.json'), 32)
+        .then((bytes) => ({ bytes, error: undefined }), (error: SelectedFileError) => ({ bytes: undefined, error }));
+      let renamed = false;
+      try {
+        try {
+          await fs.rename(pack, parked);
+          renamed = true;
+          await fs.symlink(outside, pack, 'junction');
+        } catch (error) {
+          expect(['EACCES', 'EPERM', 'EBUSY', 'ENOTEMPTY', 'EEXIST'])
+            .toContain((error as NodeJS.ErrnoException).code);
+        }
+      } finally {
+        if (renamed) {
+          await fs.rm(pack, { recursive: true, force: true });
+          await fs.rename(parked, pack);
+        }
+      }
+      const result = await attempt;
+      if (result.bytes !== undefined) {
+        expect(new TextDecoder().decode(result.bytes)).toBe('INSIDE');
+      } else {
+        expect(['PATH', 'MISSING', 'IO']).toContain(result.error?.code);
+      }
+    }
+    expect(await fs.readFile(path.join(outside, 'map.json'), 'utf8')).toBe('OUTSIDE-SECRET');
+  }, 35_000);
+
+  it('native helper refuses malformed input without emitting paths or partial bytes', async () => {
+    const root = await fixture();
+    for (const [name, cap, code] of [
+      ['C:relative.json', '16', 'PATH'],
+      [path.join(root, 'missing.json'), '16', 'MISSING'],
+      [path.join(root, 'map.exe'), '16', 'EXTENSION'],
+      [path.join(root, 'missing.json'), '536870913', 'LIMIT'],
+    ] as const) {
+      const result = spawnSync(nativeHelper, [name, cap], { encoding: 'utf8', windowsHide: true });
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr.trim()).toBe(code);
+      expect(result.stderr).not.toContain(root);
+    }
+  });
+
+  it('does not guess redirected AppData locations beneath the home directory', async () => {
+    const home = await fixture();
+    const guessed = path.join(home, 'AppData', 'Roaming', 'Wonderdraft');
+    await fs.mkdir(path.join(guessed, 'assets'), { recursive: true });
+    const result = await resolveRoots({ env: {}, home, config: {} });
+    expect(result.userData).toBeNull();
+  });
+
+  it('refuses recursive Windows drive and directory scanning', async () => {
     const home = await fixture();
     const mount = path.join(home, 'mount');
     const install = path.join(mount, 'Wonderdraft');
@@ -133,6 +232,7 @@ describe.skipIf(process.platform !== 'win32')('native Windows file and root boun
     const result = await resolveRoots({
       env: {}, home, config: {}, mounts: [mount], scan: true, scanBudget: 16,
     });
-    expect(result.install).toEqual({ path: install, origin: 'scan' });
+    expect(result.install).toBeNull();
+    expect(result.alsoFound.some((entry) => entry.origin === 'scan')).toBe(false);
   });
 });

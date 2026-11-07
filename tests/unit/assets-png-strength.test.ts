@@ -80,6 +80,15 @@ describe('crc32: argument validation and byte range', () => {
     expect(crc32(bytes, 7)).toBe(zlibCrc32(bytes.subarray(7)) >>> 0);
     expect(crc32(new Uint8Array(0))).toBe(0);
   });
+  it('matches zlib across slicing boundaries at every starting alignment', () => {
+    const data = Uint8Array.from({ length: 263 }, (_, i) => (i * 73 + 11) & 255);
+    for (let start = 0; start < 8; start++) {
+      for (let length = 0; length <= 256; length++) {
+        const end = start + length;
+        expect(crc32(data, start, end)).toBe(zlibCrc32(data.subarray(start, end)) >>> 0);
+      }
+    }
+  });
   it.each([
     ['not a Uint8Array', () => crc32([1, 2, 3] as unknown as Uint8Array)],
     ['null', () => crc32(null as unknown as Uint8Array)],

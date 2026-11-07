@@ -40,6 +40,7 @@ export const PNG_LIMITS: Readonly<{
 });
 
 const TABLE: Uint32Array = buildTable();
+const SLICING_TABLES: readonly Uint32Array[] = buildSlicingTables();
 
 function buildTable(): Uint32Array {
   const table = new Uint32Array(256);
@@ -51,6 +52,20 @@ function buildTable(): Uint32Array {
   return table;
 }
 
+function buildSlicingTables(): Uint32Array[] {
+  const tables = [TABLE];
+  for (let slice = 1; slice < 8; slice++) {
+    const previous = tables[slice - 1];
+    const next = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const crc = previous[i];
+      next[i] = TABLE[crc & 255] ^ (crc >>> 8);
+    }
+    tables.push(next);
+  }
+  return tables;
+}
+
 export function crc32(bytes: Uint8Array, start = 0, end?: number): number {
   // `end` has no default expression on purpose: a default of `bytes.length` would run before the argument check
   // below and let a TypeError escape for a null or undefined `bytes`.
@@ -60,7 +75,18 @@ export function crc32(bytes: Uint8Array, start = 0, end?: number): number {
     throw new PngError('CHUNK', 'Bad crc range', 0);
   }
   let crc = 0xffffffff;
-  for (let i = start; i < stop; i++) crc = TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  let i = start;
+  if (stop - i >= 8) {
+    const [t0, t1, t2, t3, t4, t5, t6, t7] = SLICING_TABLES;
+    for (; i + 8 <= stop; i += 8) {
+      crc = t7[(crc ^ bytes[i]) & 255] ^
+        t6[((crc >>> 8) ^ bytes[i + 1]) & 255] ^
+        t5[((crc >>> 16) ^ bytes[i + 2]) & 255] ^
+        t4[((crc >>> 24) ^ bytes[i + 3]) & 255] ^
+        t3[bytes[i + 4]] ^ t2[bytes[i + 5]] ^ t1[bytes[i + 6]] ^ t0[bytes[i + 7]];
+    }
+  }
+  for (; i < stop; i++) crc = TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
   return (crc ^ 0xffffffff) >>> 0;
 }
 
