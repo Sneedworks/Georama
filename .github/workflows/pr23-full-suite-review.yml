@@ -1,0 +1,23 @@
+name: PR 23 merged-result full Linux review
+on:
+  push:
+    branches:
+      - ci/pr23-full-suite-*
+permissions:
+  contents: read
+jobs:
+  full-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Prepare local Electron launcher dependency
+        run: node -e "require('electron')"
+      - run: npm run typecheck
+      - run: npm test -- --maxWorkers=1 --no-file-parallelism
+      - run: npm run build
