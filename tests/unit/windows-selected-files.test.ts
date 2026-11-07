@@ -49,13 +49,19 @@ describe.skipIf(process.platform !== 'win32')('native Windows file and root boun
     expect(() => checkAbsolutePath('C:relative', 'install')).toThrow();
   });
 
-  it('locates config under APPDATA with a safe fallback, ignoring XDG', async () => {
+  it('locates config only under a valid APPDATA directory, ignoring XDG', async () => {
     const root = await fixture();
     const appData = path.join(root, 'AppData', 'Roaming');
     expect(configFilePath({ APPDATA: appData, XDG_CONFIG_HOME: '/ignored' }, root))
       .toBe(path.join(appData, 'georama', 'config.json'));
-    expect(configFilePath({ APPDATA: 'C:relative' }, root))
-      .toBe(path.join(root, 'AppData', 'Roaming', 'georama', 'config.json'));
+    for (const env of [{ APPDATA: 'C:relative' }, {}]) {
+      try {
+        configFilePath(env, root);
+        expect.unreachable('an unset or invalid APPDATA must fail closed');
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'PATH', key: 'APPDATA' });
+      }
+    }
   });
 
   it('discovers Windows Wonderdraft folders via ProgramFiles and APPDATA', async () => {
@@ -118,7 +124,15 @@ describe.skipIf(process.platform !== 'win32')('native Windows file and root boun
     expect(open).not.toHaveBeenCalled();
   });
 
-  it('accepts a native Windows mount for bounded conventional root scanning', async () => {
+  it('does not guess redirected AppData locations beneath the home directory', async () => {
+    const home = await fixture();
+    const guessed = path.join(home, 'AppData', 'Roaming', 'Wonderdraft');
+    await fs.mkdir(path.join(guessed, 'assets'), { recursive: true });
+    const result = await resolveRoots({ env: {}, home, config: {} });
+    expect(result.userData).toBeNull();
+  });
+
+  it('refuses recursive Windows drive and directory scanning', async () => {
     const home = await fixture();
     const mount = path.join(home, 'mount');
     const install = path.join(mount, 'Wonderdraft');
@@ -127,6 +141,7 @@ describe.skipIf(process.platform !== 'win32')('native Windows file and root boun
     const result = await resolveRoots({
       env: {}, home, config: {}, mounts: [mount], scan: true, scanBudget: 16,
     });
-    expect(result.install).toEqual({ path: install, origin: 'scan' });
+    expect(result.install).toBeNull();
+    expect(result.alsoFound.some((entry) => entry.origin === 'scan')).toBe(false);
   });
 });
