@@ -20,10 +20,14 @@ export function hasMsvcBuildEnvironment(env, fileExists = existsSync) {
  * Windows argv escaping would turn inner double quotes into backslash-quote
  * sequences, making a quoted vcvars64.bat path unexecutable.
  * Avoid /s, whose additional quote-stripping rules are undesirable here.
+ * Quoting alone does not suppress cmd's %VAR% expansion (or !VAR! with
+ * delayed expansion), and metacharacters can become active on re-parsing.
+ * Fail closed for these characters in paths/arguments, while allowing the
+ * parentheses required by standard "Program Files (x86)" installations.
  */
 export function vcvarsCommand(vcvars, node, verify, compilerArgs) {
   const quote = (value) => {
-    if (typeof value !== 'string' || /["\r\n]/.test(value)) {
+    if (typeof value !== 'string' || value.length === 0 || /["\x00-\x1f\x7f%!^&|<>]/.test(value)) {
       throw new TypeError('Invalid compiler path or argument');
     }
     return '"' + value + '"';
