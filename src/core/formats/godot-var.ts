@@ -102,7 +102,7 @@ class Reader {
   segments: Segment[] = [];
   frames: ReadFrame[] = [];
   nodes = 0;
-  // Per-input, bounded interning: dictionary keys repeat hundreds of thousands of times (<redacted> keys, <redacted> distinct in
+  // Per-input, bounded interning: dictionary keys repeat hundreds of thousands of times (215k keys, 112 distinct in
   // the largest corpus map), so a hit saves an allocation that would live as long as the decoded tree.
   cache = new Map<number, { start: number; length: number; value: string }>();
   maxDepth: number;

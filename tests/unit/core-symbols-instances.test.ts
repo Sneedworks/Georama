@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { AtlasLookup, SymbolInput } from '../../src/core/symbols/instances.ts';
-import { buildInstances } from '../../src/core/symbols/instances.ts';
+import type { AtlasLookup, InstanceVerdict, SymbolInput } from '../../src/core/symbols/instances.ts';
+import { buildInstances as buildInstancesRaw } from '../../src/core/symbols/instances.ts';
 import { assetKey, resolveRef } from '../../src/core/assets/resolve.ts';
 import { classifySymbolTexture } from '../../src/core/symbols/texture-class.ts';
 
@@ -32,6 +32,33 @@ function sym(over: Partial<SymbolInput> = {}, texture: unknown = 'res://sprites/
 
 function keyOf(text: string): string {
   return assetKey(resolveRef('symbol', text));
+}
+
+// Access cap for buildInstances. Its index loops (instances.ts lines 96, 133, 157 and 175) read symbols[i] and
+// symbols.length on every iteration, so a mutant that stops an index from advancing reads without end, and the
+// file never finishes. Calls therefore read the list through a Proxy that counts reads. Past the cap the call
+// returns a failing verdict, so expectations that need ok: true fail and the file completes. The cap grows with
+// the list length, because the sort reads O(n log n) entries, so a correct run stays far below it.
+const ACCESS_CAP = Symbol('access cap');
+
+function buildInstances(symbols: readonly SymbolInput[], atlas: AtlasLookup): InstanceVerdict {
+  if (!Array.isArray(symbols) || symbols.length > 1_000_000) return buildInstancesRaw(symbols, atlas);
+  const n = symbols.length;
+  const cap = 64 * (n + 1) * (Math.ceil(Math.log2(n + 2)) + 2) + 1000;
+  let reads = 0;
+  const counted = new Proxy(symbols as SymbolInput[], {
+    get(target, key, receiver) {
+      reads += 1;
+      if (reads > cap) throw ACCESS_CAP;
+      return Reflect.get(target, key, receiver);
+    },
+  });
+  try {
+    return buildInstancesRaw(counted, atlas);
+  } catch (error) {
+    if (error === ACCESS_CAP) return { ok: false, code: 'INPUT', message: 'access cap: buildInstances did not terminate' };
+    throw error;
+  }
 }
 
 describe('finite Float32 GPU instance records (I5)', () => {
@@ -622,5 +649,13 @@ describe('gap closure 0.11 (residual): placeholder uv from a non-square reserved
     expect(v.ok).toBe(true);
     if (!v.ok) return;
     expect(Array.from(v.records)).toEqual([1, 0, 0, 1, 7, 9, 3, 5, 16, 8, 1, 0, 1, 1, 1, 0]);
+  });
+});
+
+describe('instances access cap: index loops terminate (watchdog pins)', () => {
+  it('a two-symbol list returns ok under the access cap (kills i += 0 in the index loops)', () => {
+    const texture = 'res://sprites/grove_alpha/oak_01';
+    const v = buildInstances([sym({}, texture), sym({}, texture)], lookupFor(keyOf(texture)));
+    expect(v.ok).toBe(true);
   });
 });
