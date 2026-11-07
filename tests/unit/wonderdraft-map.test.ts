@@ -150,11 +150,38 @@ function expectRoundTrip(x: GdDict): WdMap {
   return map;
 }
 
-function timed(fn: () => void, ms: number): void {
-  const start = Date.now();
-  fn();
-  expect(Date.now() - start).toBeLessThan(ms);
+// Same-run baseline: a fixed CPU workload is timed in the same run as the operation, so a loaded machine raises the
+// budget by the same factor. QUIET_REFERENCE_MS is the workload's median on a quiet machine (about 51 ms; nine runs
+// after three warm-ups, measured 2026-10-25).
+const QUIET_REFERENCE_MS = 51;
+
+function referenceMs(): number {
+  const start = performance.now();
+  let acc = 0;
+  for (let i = 0; i < 3_000_000; i += 1) acc = (acc + i * 2654435761) % 4294967296;
+  if (acc < 0) throw new Error('unreachable');
+  return performance.now() - start;
 }
+
+// The budget scales up with the same-run workload and never drops below the quiet-machine value.
+function budgetMs(ms: number, sameRunMs: number, quietMs: number): number {
+  return ms * Math.max(1, sameRunMs / quietMs);
+}
+
+function timed(fn: () => void, ms: number): void {
+  const sameRun = referenceMs();
+  const start = performance.now();
+  fn();
+  expect(performance.now() - start).toBeLessThan(budgetMs(ms, sameRun, QUIET_REFERENCE_MS));
+}
+
+describe('timing budget rule', () => {
+  it('keeps the quiet-machine budget and scales it only up, never below', () => {
+    expect(budgetMs(200, QUIET_REFERENCE_MS, QUIET_REFERENCE_MS)).toBe(200);
+    expect(budgetMs(200, QUIET_REFERENCE_MS / 4, QUIET_REFERENCE_MS)).toBe(200);
+    expect(budgetMs(200, QUIET_REFERENCE_MS * 2, QUIET_REFERENCE_MS)).toBe(400);
+  });
+});
 
 const ROOT_KEYS = [
   'version', 'map_width', 'map_height', 'water_level', 'water_flip_x', 'water_flip_y',
