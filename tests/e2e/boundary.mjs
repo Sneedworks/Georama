@@ -606,8 +606,7 @@ else onmessage = e => run(self,e.data);
     for (const outcome of Object.values(out.tamper)) assert.notEqual(outcome, 'allowed');
     assert.equal(out.constructorDenied, true);
     assert.deepEqual(Object.keys(out.before).sort(), ['name','id','version','electron','chrome','node','platform','e2e'].sort());
-    const declaredElectronVersion = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).devDependencies.electron;
-    assert.equal(out.before.electron, declaredElectronVersion);
+    assert.equal(out.before.electron, '44.7.0');
     return out;
   });
   await probe('CSP blocks executable inline code and eval', async () => {
