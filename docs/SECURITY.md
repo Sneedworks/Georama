@@ -35,7 +35,7 @@ Windows selected-map and configuration reads are separate from Georama's root-co
 
 Windows path validation accepts only normalized drive-qualified absolute paths, rejecting ambiguous device, share, stream and relative forms. It provides path syntax screening, not filesystem confinement.
 
-The selected-file reader is intended for trusted explicit local selections. It keeps a single open file handle during bounded reads, checks file type and metadata, and performs a preliminary Windows symbolic-link leaf check. That preliminary check does **not** provide the same atomic no-follow guarantee as the Linux version. This limitation is acceptable only for the current direct-selected-file use, which is not available to untrusted renderer IPC. It is not sufficient for implementing confined asset-pack reads.
+The selected-file reader is intended for trusted explicit local selections. It keeps a single open file handle during bounded reads, checks file type and metadata, and performs a preliminary Windows symbolic-link leaf check. That preliminary check does **not** provide the same atomic no-follow guarantee as the Linux version; it also misses junctions or reparse points in intermediate path components. These are outstanding review blockers for merge/release or wiring selected paths into renderer IPC. Windows config lookup requires canonical `APPDATA`; recursive drive/mount scanning is disabled. The Linux descriptor-confined reader remains unchanged.
 
 A subsequent Windows asset backend requires independent security review and native tests for links, junctions, path replacement, archive consistency, size limits, concurrent reads and cleanup. The existing Linux backend remains unchanged.
 
