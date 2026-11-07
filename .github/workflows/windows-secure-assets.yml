@@ -46,6 +46,8 @@ jobs:
       - run: npm run build
       - name: Compile Win32 reader with MSVC
         run: node scripts/build-win-asset-helper.mjs
+      - name: Compile selected-file held-HANDLE helper with MSVC
+        run: node scripts/build-win-selected-helper.mjs
       - name: Windows native read, integration and adversarial tests
         run: >-
           npx vitest run
