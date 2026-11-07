@@ -90,7 +90,7 @@ describe('first-light window selection against direct pixel-count oracle', () =>
   it('preserves land counts exceeding the 16-bit range in a full-size window', () => {
     const side = 384;
     const mask = maskOf(side, side, (x) => x < side / 2 ? 255 : 0);
-    // 73,728 land texels; a 4-column strip along the coast is within radius 2.
+    // <redacted> land texels; a 4-column strip along the coast is within radius 2.
     expect(selectWindow(mask, 128, side, side)).toEqual({
       x0: 0,
       y0: 0,
