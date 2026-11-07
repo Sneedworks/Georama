@@ -226,7 +226,20 @@ try {
     assert.equal(info.e2e, true);
   });
 
-  await check('asset IPC refuses unselected roots and arbitrary file references', async () => {
+  await check('asset IPC is registered only for the supported Windows asset backend', async () => {
+    if (process.platform !== 'win32') {
+      // The preload API may be present, but the main process must not expose
+      // native asset capabilities on platforms without this staged backend.
+      await assert.rejects(
+        () => page.evaluate("window.georama.selectUserAssets()"),
+        /No handler registered for 'assets:select-user-root'/,
+      );
+      await assert.rejects(
+        () => page.evaluate("window.georama.readUserImage('symbol', 'user:\/\/assets\/p\/tree')"),
+        /No handler registered for 'assets:read-user-image'/,
+      );
+      return;
+    }
     const unavailable = await page.evaluate("window.georama.readUserImage('symbol', 'user://assets/p/tree')");
     assert.deepEqual(unavailable, { ok: false, code: 'NOT_SELECTED' });
     const forbidden = await page.evaluate("window.georama.readUserImage('symbol', 'res://sprites/tree')");
