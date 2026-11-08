@@ -70,14 +70,45 @@ export function tileRgba8(
   const periodX = tw * k;
   const periodY = th * k;
   const out = new Uint8Array(outW * outH * 4);
+
+  // A single row or a small output does not amortize creating a lookup. Also cap
+  // extra memory at 512 KiB for unusually wide, shallow images.
+  if (outH === 1 || outW * outH < 4096 || outW > TILE_LIMITS.maxSide * TILE_LIMITS.maxK) {
+    for (let y = 0; y < outH; y++) {
+      const m = (y + oy) % periodY;
+      const sy = (m - (m % k)) / k;
+      const srcRow = sy * tw * 4;
+      const dstRow = y * outW * 4;
+      for (let x = 0; x < outW; x++) {
+        const n = (x + ox) % periodX;
+        const sx = (n - (n % k)) / k;
+        const src = srcRow + sx * 4;
+        const dst = dstRow + x * 4;
+        out[dst] = input[src];
+        out[dst + 1] = input[src + 1];
+        out[dst + 2] = input[src + 2];
+        out[dst + 3] = input[src + 3];
+      }
+    }
+    return out;
+  }
+
+  // tw <= 4096, so each source-column byte offset fits in 16 bits.
+  // Reuse this mapping for every output row instead of dividing/modding per pixel.
+  const sourceColumnBytes = new Uint16Array(outW);
+  for (let x = 0; x < outW; x++) {
+    const n = (x + ox) % periodX;
+    const sx = (n - (n % k)) / k;
+    sourceColumnBytes[x] = sx * 4;
+  }
   for (let y = 0; y < outH; y++) {
     const m = (y + oy) % periodY;
     const sy = (m - (m % k)) / k;
+    const srcRow = sy * tw * 4;
+    const dstRow = y * outW * 4;
     for (let x = 0; x < outW; x++) {
-      const n = (x + ox) % periodX;
-      const sx = (n - (n % k)) / k;
-      const src = (sy * tw + sx) * 4;
-      const dst = (y * outW + x) * 4;
+      const src = srcRow + sourceColumnBytes[x];
+      const dst = dstRow + x * 4;
       out[dst] = input[src];
       out[dst + 1] = input[src + 1];
       out[dst + 2] = input[src + 2];

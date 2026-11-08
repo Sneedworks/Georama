@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TileError, tileRgba8 } from '../../src/core/texture/tiling.ts';
 
 // A 2 by 2 texture. The red byte holds 1, 2, 3 and 4, so every texel is identifiable.
@@ -81,5 +81,63 @@ describe('tileRgba8: float32 exactness precondition', () => {
 
   it('accepts the largest allowed offsets on a one-pixel output', () => {
     expect(codeOf(() => tileRgba8(TEX, 2, 2, 1, 1, { k: 1, ox: 65535, oy: 65535 }))).toBeUndefined();
+  });
+});
+
+describe('tileRgba8: repeated-row mapping efficiency', () => {
+  it('builds one horizontal texel lookup reused across output rows, with exact bytes', () => {
+    const tw = 7;
+    const th = 5;
+    const outW = 2048;
+    const outH = 48;
+    const params = { k: 7, ox: 65535, oy: 65535 };
+    const input = new Uint8Array(tw * th * 4);
+    for (let i = 0; i < input.length; i++) input[i] = (i * 47 + 23) & 255;
+
+    const ActualUint16Array = Uint16Array;
+    const maps: number[] = [];
+    const ObservedUint16Array = new Proxy(ActualUint16Array, {
+      construct(target, args) {
+        if (typeof args[0] === 'number') maps.push(args[0]);
+        return Reflect.construct(target, args, target);
+      },
+    });
+    vi.stubGlobal('Uint16Array', ObservedUint16Array);
+    let result: Uint8Array;
+    try {
+      result = tileRgba8(input, tw, th, outW, outH, params);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(maps).toEqual([outW]);
+    const expected = new Uint8Array(outW * outH * 4);
+    for (let y = 0; y < outH; y++) {
+      for (let x = 0; x < outW; x++) {
+        const sx = Math.floor(((x + params.ox) % (tw * params.k)) / params.k);
+        const sy = Math.floor(((y + params.oy) % (th * params.k)) / params.k);
+        for (let c = 0; c < 4; c++) expected[(y * outW + x) * 4 + c] = input[(sy * tw + sx) * 4 + c];
+      }
+    }
+    expect(Buffer.from(result).equals(expected)).toBe(true);
+  });
+
+  it('skips lookup allocation for a small output or one very wide row', () => {
+    const NativeUint16Array = Uint16Array;
+    const sizes: number[] = [];
+    vi.stubGlobal('Uint16Array', new Proxy(NativeUint16Array, {
+      construct(target, args) {
+        if (typeof args[0] === 'number') sizes.push(args[0]);
+        return Reflect.construct(target, args, target);
+      },
+    }));
+    try {
+      expect(tileRgba8(TEX, 2, 2, 32, 32, { k: 2, ox: 65535, oy: 65535 }).length).toBe(32 * 32 * 4);
+      expect(tileRgba8(TEX, 2, 2, 4096, 1, { k: 2, ox: 65535, oy: 65535 }).length).toBe(4096 * 4);
+      expect(tileRgba8(TEX, 2, 2, 262145, 2, { k: 2, ox: 65535, oy: 65535 }).length).toBe(262145 * 2 * 4);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(sizes).toEqual([]);
   });
 });
