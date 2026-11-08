@@ -199,10 +199,27 @@ export function selectWindow(
   assertExtent(stride, 'stride');
   const { width, height } = mask;
   // Read classifications directly from the mask's alpha channel. No full-map
-  // land-byte allocation is needed while building the two summed-area tables.
+  // land-byte allocation is needed while building the summed-area tables.
   const landSat = summedArea(mask.data, width, height, threshold);
-  const coastSat = coastSummedArea(mask.data, landSat, width, height, threshold);
   const area = size * size;
+  // Eligibility depends only on land counts. Find the first eligible window
+  // before allocating and computing the full-map coastline table. This also
+  // handles maps too small for even one window. The scan stops at the first
+  // match, so eligible maps add only a small amount of work.
+  let hasEligibleWindow = false;
+  for (let y0 = 0; y0 + size <= height && !hasEligibleWindow; y0 += stride) {
+    for (let x0 = 0; x0 + size <= width; x0 += stride) {
+      const landFraction = rectSum(landSat, width, x0, y0, size) / area;
+      if (landFraction >= LAND_FRACTION_MIN && landFraction <= LAND_FRACTION_MAX) {
+        hasEligibleWindow = true;
+        break;
+      }
+    }
+  }
+  if (!hasEligibleWindow) {
+    throw new RangeError('no candidate window fits, or none is eligible');
+  }
+  const coastSat = coastSummedArea(mask.data, landSat, width, height, threshold);
   let best: WindowPick | null = null;
   for (let y0 = 0; y0 + size <= height; y0 += stride) {
     for (let x0 = 0; x0 + size <= width; x0 += stride) {
