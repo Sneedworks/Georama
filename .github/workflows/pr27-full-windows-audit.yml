@@ -1,0 +1,26 @@
+name: PR27 full Windows unit audit
+
+on:
+  push:
+    branches: ['audit/pr27-full-windows-20261108']
+
+permissions:
+  contents: read
+
+jobs:
+  full-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Compile both native helper backends
+        run: |
+          node scripts/build-win-asset-helper.mjs
+          node scripts/build-win-selected-helper.mjs
+      - name: Run entire exact-head Windows unit suite (diagnostic)
+        run: npm test
