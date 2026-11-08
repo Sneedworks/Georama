@@ -1,0 +1,22 @@
+name: PR27 plus PR28 Windows integration audit
+
+on:
+  push:
+    branches: ['audit/pr27-plus-pr28-20261108']
+
+permissions:
+  contents: read
+
+jobs:
+  full-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Full platform-selected Windows suite (including PR27 IPC contracts)
+        run: npm test
