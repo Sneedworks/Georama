@@ -66,7 +66,7 @@ try {
     ...(ciDialogFixture ? [`--inspect=127.0.0.1:${mainPort}`] : []),
   ], {
     cwd: temporary,
-    env: { ...process.env, GEORAMA_E2E: '1', GEORAMA_DEVTOOLS: '0' },
+    env: { ...process.env, GEORAMA_E2E: ciRealPicker ? '0' : '1', GEORAMA_DEVTOOLS: '0' },
     stdio: ['ignore', 'ignore', 'pipe'],
     windowsHide: ciDialogFixture,
     shell: false,
@@ -213,6 +213,7 @@ try {
     ? 'PASS packaged IPC: real Electron IPC/native helper and synthetic picker result; traversal refused.'
     : 'PASS packaged IPC: real OS picker, native bytes and traversal refusal.');
 } finally {
+  if (ciRealPicker) { console.error('Real picker GUI audit:', JSON.stringify({ automationExit: pickerAutomation?.exitCode, output: pickerOutput })); }
   if (pickerAutomation?.exitCode === null) pickerAutomation.kill();
   try { forgedWindow?.close(); } catch { /* not opened */ }
   try { mainInspector?.close(); } catch { /* inspector already closed */ }
