@@ -5,7 +5,11 @@ import { spawn } from 'node:child_process';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
-import { configureWindowsAssetHelper, readWindowsAsset } from '../../electron/assets/windows-read.ts';
+import {
+  configureWindowsAssetHelper,
+  readWindowsAsset,
+  WINDOWS_ASSET_HELPER_LIMITS,
+} from '../../electron/assets/windows-read.ts';
 
 function fakeChild() {
   return Object.assign(new EventEmitter(), {
@@ -64,6 +68,14 @@ describe('bounded native Windows process bridge (portable mocks)', () => {
     child.stderr.emit('data', Buffer.from(code + '\n'));
     child.emit('close', 1);
     expect(await work).toEqual({ error: code });
+  });
+
+  it('does not accept a helper-supplied TIMEOUT token as a bridge deadline', async () => {
+    const child = childProcess();
+    const work = readWindowsAsset('C:\\assets', 'pack/missing.png', 9);
+    child.stderr.emit('data', Buffer.from('TIMEOUT\n'));
+    child.emit('close', 1);
+    expect(await work).toEqual({ error: 'IO' });
   });
 
   it('rejects malformed helper stderr and nonzero exits without leaking output', async () => {
@@ -151,7 +163,7 @@ describe('bounded native Windows process bridge (portable mocks)', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(child.kill).toHaveBeenCalledOnce();
     child.emit('close', null);
-    expect(await first).toEqual({ error: 'IO' });
+    expect(await first).toEqual({ error: 'TIMEOUT' });
   });
 
   it('resolves after a bounded termination grace but retains slot until late close', async () => {
@@ -162,13 +174,37 @@ describe('bounded native Windows process bridge (portable mocks)', () => {
       children[spawned++] as unknown as ReturnType<typeof spawn>);
     const stalled = readWindowsAsset('C:\\assets', 'pack/tree.png', 8);
     await vi.advanceTimersByTimeAsync(63_000);
-    expect(await stalled).toEqual({ error: 'IO' });
+    expect(await stalled).toEqual({ error: 'TIMEOUT' });
     const others = Array.from({ length: 3 }, () => readWindowsAsset('C:\\assets', 'pack/tree.png', 8));
     expect(await readWindowsAsset('C:\\assets', 'pack/tree.png', 8)).toEqual({ error: 'BUSY' });
     children[0].emit('close', null);
     const fifth = readWindowsAsset('C:\\assets', 'pack/tree.png', 8);
     for (const child of children.slice(1)) child.emit('close', 0);
     await Promise.all([...others, fifth]);
+  });
+
+  it('retains all four timed-out slots while children remain alive, then recovers on close', async () => {
+    vi.useFakeTimers();
+    const children = Array.from({ length: 5 }, () => fakeChild());
+    let spawned = 0;
+    vi.mocked(spawn).mockImplementation(() =>
+      children[spawned++] as unknown as ReturnType<typeof spawn>);
+    const calls = Array.from({ length: 4 }, () => readWindowsAsset('C:\\assets', 'pack/tree.png', 8));
+    await vi.advanceTimersByTimeAsync(
+      WINDOWS_ASSET_HELPER_LIMITS.timeoutMs + WINDOWS_ASSET_HELPER_LIMITS.terminationGraceMs,
+    );
+    expect(await Promise.all(calls)).toEqual(Array.from({ length: 4 }, () => ({ error: 'TIMEOUT' })));
+    for (const child of children.slice(0, 4)) expect(child.kill).toHaveBeenCalledOnce();
+    expect(await readWindowsAsset('C:\\assets', 'pack/tree.png', 8)).toEqual({ error: 'BUSY' });
+    expect(spawn).toHaveBeenCalledTimes(4);
+
+    // The caller already completed, but only the OS close may release its slot.
+    children[0].emit('close', null);
+    const recovered = readWindowsAsset('C:\\assets', 'pack/tree.png', 8);
+    expect(spawn).toHaveBeenCalledTimes(5);
+    children[4].emit('close', 0);
+    expect(await recovered).toEqual({ bytes: new Uint8Array() });
+    for (const child of children.slice(1, 4)) child.emit('close', null);
   });
 
   it('recovers its slot after a synchronous spawn throw and after failed startup', async () => {

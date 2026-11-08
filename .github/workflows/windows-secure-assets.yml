@@ -31,6 +31,7 @@ jobs:
           tests/unit/msvc-environment.test.ts
           tests/unit/windows-asset-bridge.test.ts
           tests/unit/windows-asset-config.test.ts
+          tests/unit/windows-asset-packaged-path.test.ts
           tests/unit/assets-open.test.ts
           tests/unit/assets-store.test.ts
 
@@ -55,6 +56,7 @@ jobs:
           tests/unit/msvc-environment.test.ts
           tests/unit/windows-asset-bridge.test.ts
           tests/unit/windows-asset-config.test.ts
+          tests/unit/windows-asset-packaged-path.test.ts
           tests/unit/windows-selected-files.test.ts
           tests/unit/windows-asset-reader.test.ts
           tests/unit/windows-asset-races.test.ts

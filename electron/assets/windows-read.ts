@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
-export type WindowsReadError = 'PATH' | 'EXTENSION' | 'LIMIT' | 'MISSING' | 'TYPE' | 'IO' | 'BUSY';
+export type WindowsReadError = 'PATH' | 'EXTENSION' | 'LIMIT' | 'MISSING' | 'TYPE' | 'IO' | 'BUSY' | 'TIMEOUT';
 
 export interface WindowsReadResult {
   readonly bytes?: Uint8Array;
@@ -26,14 +26,19 @@ let configuredHelper: string | undefined;
  * Bind the helper to the application installation root, never to process.cwd().
  * Call once from trusted Electron main startup, before registering asset IPC.
  * Tests may supply their own checkout root, also independently of cwd.
- * Packaged builds remain fail-closed until the helper is installed there.
+ * For app.asar, resolve only the corresponding real app.asar.unpacked path.
+ * A packager must explicitly install the executable there; never try to
+ * execute an archive member or search a fallback location.
  */
 export function configureWindowsAssetHelper(appRoot: string): void {
   if (configuredHelper !== undefined) throw new Error('Windows helper already configured');
   if (typeof appRoot !== 'string' || !path.isAbsolute(appRoot)) {
     throw new Error('Windows helper requires an absolute application root');
   }
-  configuredHelper = path.join(appRoot, 'out', 'windows', 'georama-win-asset-read.exe');
+  const helperRoot = path.basename(appRoot).toLowerCase() === 'app.asar'
+    ? path.join(path.dirname(appRoot), 'app.asar.unpacked')
+    : appRoot;
+  configuredHelper = path.join(helperRoot, 'out', 'windows', 'georama-win-asset-read.exe');
 }
 
 /**
@@ -42,7 +47,8 @@ export function configureWindowsAssetHelper(appRoot: string): void {
  * A missing helper or invalid response fails closed; no JS read fallback.
  *
  * The executable location is fixed at startup from the trusted app directory.
- * Production packaging and helper authentication are NOT implemented here.
+ * A packaged app.asar needs its helper in app.asar.unpacked. A missing file
+ * fails closed; binary authentication and release packaging remain separate.
  */
 export function readWindowsAsset(
   root: string,
@@ -102,7 +108,7 @@ export function readWindowsAsset(
       chunks.length = 0; // release partial unverified bytes before waiting
       try { child.kill(); } catch { /* fall through to bounded grace */ }
       // Wait for streams to close before resolving where possible. If a child
-      // remains unresponsive, resolve IO/LIMIT but keep its concurrency slot
+      // remains unresponsive, resolve TIMEOUT/IO/LIMIT but keep its concurrency slot
       // reserved until close: never start more children against a stuck one.
       if (!settled) {
         terminationGrace = setTimeout(
@@ -112,7 +118,9 @@ export function readWindowsAsset(
       }
     }
 
-    const watchdog = setTimeout(() => terminate('IO'), WINDOWS_ASSET_HELPER_LIMITS.timeoutMs);
+    // This is a bridge-owned deadline, not a helper stderr token. Keep ordinary
+    // native/stream failures as IO so callers can distinguish slow storage.
+    const watchdog = setTimeout(() => terminate('TIMEOUT'), WINDOWS_ASSET_HELPER_LIMITS.timeoutMs);
 
     child.stdout?.on('data', (chunk: Buffer) => {
       if (settled || forcedError !== undefined) return;

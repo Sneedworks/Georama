@@ -11,7 +11,7 @@ export const ASSET_FILE_LIMITS = Object.freeze({
   maxSegmentBytes: 255,
 });
 
-export type AssetFileErrorCode = 'PATH' | 'EXTENSION' | 'LIMIT' | 'MISSING' | 'TYPE' | 'IO' | 'BUSY';
+export type AssetFileErrorCode = 'PATH' | 'EXTENSION' | 'LIMIT' | 'MISSING' | 'TYPE' | 'IO' | 'BUSY' | 'TIMEOUT';
 
 export class AssetFileError extends Error {
   readonly code: AssetFileErrorCode;
@@ -84,7 +84,8 @@ export async function readAssetFile(
     const result = await readWindowsAsset(root, relative, maxBytes);
     if (result.bytes !== undefined) return result.bytes;
     const code = result.error ?? 'IO';
-    throw new AssetFileError(code, code === 'LIMIT' ? 'Asset exceeds byte limit' : 'Could not read asset data');
+    throw new AssetFileError(code, code === 'LIMIT' ? 'Asset exceeds byte limit' :
+      code === 'TIMEOUT' ? 'Asset read timed out' : 'Could not read asset data');
   }
   const handles: FileHandle[] = [];
   let result: Uint8Array | undefined;
