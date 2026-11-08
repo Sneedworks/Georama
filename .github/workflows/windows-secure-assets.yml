@@ -3,7 +3,7 @@ name: Native Windows asset handles
 on:
   pull_request:
   push:
-    branches: [main, 'feat/windows-*']
+    branches: [main, 'feat/windows-*', 'feat/asset-ipc-capabilities']
   workflow_dispatch:
 
 permissions:
