@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   GcpfError, decodeGcpf, encodeGcpf, fastlzCompress, fastlzDecompress,
   fastlzMaxCompressedSize, readGcpfHeader,
@@ -231,6 +231,35 @@ describe('GCPF round trips', () => {
     const decoded = decodeGcpf(view);
     expect(decoded.payload).toEqual(src);
     expect(readGcpfHeader(view)).toEqual(decoded.header);
+  });
+});
+
+describe('GCPF encoding allocation efficiency', () => {
+  it('does not reserve an input-sized compressed buffer for highly compressible data', () => {
+    const NativeUint8Array = Uint8Array;
+    const input = new NativeUint8Array(8 * 1024 * 1024);
+    const allocations: number[] = [];
+    const ObservedUint8Array = new Proxy(NativeUint8Array, {
+      construct(target, args) {
+        if (typeof args[0] === 'number') allocations.push(args[0]);
+        return Reflect.construct(target, args, target);
+      },
+    });
+
+    vi.stubGlobal('Uint8Array', ObservedUint8Array);
+    let encoded: Uint8Array;
+    try {
+      encoded = encodeGcpf(input);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(Math.max(...allocations)).toBeLessThan(1024 * 1024);
+    expect(encoded.length).toBeLessThan(200_000);
+    expect(encoded.buffer.byteLength).toBe(encoded.length);
+    expect(createHash('sha256').update(encoded).digest('hex'))
+      .toBe('9448d7f890321a0927939912ded0111ddef5dda2c3a8ea195c0d0ed6ebb3efcf');
+    expect(Buffer.from(decodeGcpf(encoded).payload).equals(input)).toBe(true);
   });
 });
 
