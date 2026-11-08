@@ -5,7 +5,7 @@
 // That CI mode does NOT claim to have tested the native picker UI itself.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, stat, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, stat, rm, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -23,10 +23,13 @@ if (!appRoot || !path.win32.isAbsolute(appRoot)) {
 const binary = path.join(appRoot, 'electron.exe');
 if (!(await stat(binary)).isFile()) throw new Error('Missing portable electron.exe');
 
-const temporary = await mkdtemp(path.join(os.tmpdir(), 'georama-ipc-smoke-'));
-const assetRoot = path.join(temporary, 'user');
-const assetFolder = path.join(assetRoot, 'assets', 'ipc-probe');
+// Match the exact canonical DOS path the held-HANDLE helper independently
+// requires, just as the native reader's adversarial fixture does.
+const temporary = await realpath(await mkdtemp(path.join(os.tmpdir(), 'georama-ipc-smoke-')));
+const userFolder = path.join(temporary, 'user');
+const assetFolder = path.join(userFolder, 'assets', 'ipc-probe');
 await mkdir(assetFolder, { recursive: true });
+const assetRoot = await realpath(userFolder);
 const png = makePng({ width: 2, height: 2 });
 await writeFile(path.join(assetFolder, 'tree.png'), png);
 
