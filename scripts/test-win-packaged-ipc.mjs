@@ -30,6 +30,17 @@ await mkdir(assetFolder, { recursive: true });
 const png = makePng({ width: 2, height: 2 });
 await writeFile(path.join(assetFolder, 'tree.png'), png);
 
+// Positive control: the real packaged native EXE must read this same fixture.
+// If the IPC read later fails, this distinguishes helper path confinement
+// from bridge/store/renderer regressions without logging private filesystem paths.
+const helper = path.join(appRoot, 'resources', 'app', 'out', 'windows', 'georama-win-asset-read.exe');
+const direct = spawnSync(helper, [assetRoot, 'assets/ipc-probe/tree.png', String(64 * 1024 * 1024)], {
+  cwd: temporary, windowsHide: true, timeout: 15000, maxBuffer: 1024 * 1024,
+});
+assert.equal(direct.error, undefined, 'native helper launch failed');
+assert.equal(direct.status, 0, `native helper refused fixture (${String(direct.stderr).trim()})`);
+assert.deepEqual(direct.stdout, Buffer.from(png), 'native helper returned unexpected bytes');
+
 const port = await freePort();
 let mainPort;
 if (ciDialogFixture) {
