@@ -17,6 +17,7 @@ if (process.platform !== 'win32') {
 }
 const appRoot = process.argv[2];
 const ciDialogFixture = process.argv.includes('--ci-dialog-fixture');
+const ciRealPicker = process.argv.includes('--ci-real-picker');
 if (!appRoot || !path.win32.isAbsolute(appRoot)) {
   throw new Error('Usage: node scripts/test-win-packaged-ipc.mjs <absolute portable folder>');
 }
@@ -54,6 +55,8 @@ let child;
 let ws;
 let mainInspector;
 let forgedWindow;
+let pickerAutomation;
+let pickerOutput = '';
 try {
   child = spawn(binary, [
     '--remote-debugging-address=127.0.0.1',
@@ -145,12 +148,27 @@ try {
     })()`);
     assert.equal(configured, true, 'test-only main-process dialog fixture was not installed');
   } else {
-    console.log('Select this exact directory in the Windows folder picker:');
-    console.log(assetRoot);
-    console.log('Waiting for selection (up to 120 seconds)...');
+    if (ciRealPicker) {
+      pickerAutomation = spawn('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-STA', '-File',
+        path.join(import.meta.dirname, 'automate-win-folder-picker.ps1'),
+        '-FolderPath', assetRoot, '-OwnerProcessId', String(child.pid),
+      ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      for (const stream of [pickerAutomation.stdout, pickerAutomation.stderr]) {
+        stream.on('data', chunk => { pickerOutput = (pickerOutput + String(chunk)).slice(-2048); });
+      }
+    } else {
+      console.log('Select this exact directory in the Windows folder picker:');
+      console.log(assetRoot);
+      console.log('Waiting for selection (up to 120 seconds)...');
+    }
   }
-  assert.equal(await evaluate('window.georama.selectUserAssets()', 120_000), true,
+  assert.equal(await evaluate('window.georama.selectUserAssets()', ciRealPicker ? 45_000 : 120_000), true,
     'Folder selection canceled or rejected');
+  if (pickerAutomation) {
+    const result = pickerAutomation.exitCode ?? await new Promise(resolve => pickerAutomation.once('exit', code => resolve(code)));
+    assert.equal(result, 0, `Windows folder-picker automation failed: ${pickerOutput}`);
+  }
 
   const result = await evaluate(`window.georama.readUserImage('symbol','user://assets/ipc-probe/tree')
     .then(x => x.ok ? ({ok:true, bytes:Array.from(x.bytes)}) : x)`);
@@ -195,6 +213,7 @@ try {
     ? 'PASS packaged IPC: real Electron IPC/native helper and synthetic picker result; traversal refused.'
     : 'PASS packaged IPC: real OS picker, native bytes and traversal refusal.');
 } finally {
+  if (pickerAutomation?.exitCode === null) pickerAutomation.kill();
   try { forgedWindow?.close(); } catch { /* not opened */ }
   try { mainInspector?.close(); } catch { /* inspector already closed */ }
   ws?.close();
@@ -206,7 +225,7 @@ try {
       stdio: 'ignore', windowsHide: true, timeout: 5000,
     });
   }
-  if (ciDialogFixture) {
+  if (ciDialogFixture || ciRealPicker) {
     await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   } else {
     // A human may still be using the picker or another test window; preserve

@@ -1,0 +1,26 @@
+name: Native Windows real folder picker audit
+on:
+  push:
+    branches: ['audit/pr27-real-picker-20261108']
+permissions:
+  contents: read
+jobs:
+  real-picker:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run package:win:portable
+      - name: Attempt actual Windows OS folder picker in hosted interactive session
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folders = @(Get-ChildItem -LiteralPath 'out/portable' -Directory)
+          if ($folders.Count -ne 1) { throw 'Unexpected preview directory count' }
+          node scripts/test-win-packaged-ipc.mjs "$($folders[0].FullName)" --ci-real-picker
+          if ($LASTEXITCODE -ne 0) { throw 'Real picker GUI interaction did not pass' }
