@@ -4,6 +4,7 @@ import type { WebContents } from 'electron';
 import { BRAND } from '../src/shared/brand.ts';
 import type { AppInfo } from '../src/shared/ipc.ts';
 import { registerIpc } from './ipc.ts';
+import { registerAssetIpc } from './asset-ipc.ts';
 import { configureWindowsAssetHelper } from './assets/windows-read.ts';
 import { createNavigationGuard, isEditorDocument } from './navigation-guard.ts';
 import { installNetwork } from './network.ts';
@@ -115,6 +116,8 @@ if (!e2e && !app.requestSingleInstanceLock()) {
       const appRoot = app.getAppPath();
       configureWindowsSelectedFileHelper(appRoot);
       configureWindowsAssetHelper(appRoot);
+      // This is a draft-only capability pending an explicit owner decision.
+      registerAssetIpc(() => mainWindow?.webContents ?? null, () => mainWindow, editorUrl);
     }
     registerIpc(appInfo, () => mainWindow?.webContents ?? null, editorUrl);
     createEditorWindow();
