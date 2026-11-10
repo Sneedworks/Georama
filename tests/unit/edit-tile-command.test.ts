@@ -1,6 +1,6 @@
 // Card 2.3, detail v2.2 (bbaee86): acceptance tests A3, A7, A8 and rule D4 (building is pure).
 // RED stage: this file imports modules that do not exist yet (see edit-tiles.test.ts).
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Verdict } from '../../src/core/edit/command.ts';
 import { TILE, TileGrid } from '../../src/core/edit/tiles.ts';
 import { buildTileWrite, type CellWrite } from '../../src/core/edit/tile-command.ts';
@@ -86,5 +86,98 @@ describe('card 2.3 D4: construction is pure', () => {
     expect(grid.cellValue(3, 3)).toEqual(new Uint8Array([4]));
     cmd.revert();
     expect(same(grid.snapshot(), before)).toBe(true);
+  });
+});
+
+describe('tile write sparse fast paths', () => {
+  it('does not clone an existing tile for a repeated no-op write', () => {
+    const grid = new TileGrid(256, 128, 1);
+    must(buildTileWrite(grid, [cell(2, 3, 17)], BIG)).apply();
+    const before = grid.tileBytes(0)!;
+    const clone = vi.spyOn(before, 'slice');
+
+    expect(codeOf(buildTileWrite(grid, [cell(2, 3, 17)], BIG))).toBe('noop');
+    expect(clone).not.toHaveBeenCalled();
+    expect(grid.tileBytes(0)).toBe(before);
+  });
+
+  it('uses the final value for duplicate writes, including a write that cancels an earlier change', () => {
+    const grid = new TileGrid(256, 128, 1);
+    must(buildTileWrite(grid, [cell(2, 3, 17)], BIG)).apply();
+    const before = grid.tileBytes(0)!;
+    const clone = vi.spyOn(before, 'slice');
+
+    expect(codeOf(buildTileWrite(grid, [cell(2, 3, 29), cell(2, 3, 17)], BIG))).toBe('noop');
+    expect(clone).not.toHaveBeenCalled();
+    expect(grid.cellValue(2, 3)).toEqual(new Uint8Array([17]));
+    expect(codeOf(buildTileWrite(grid, [cell(130, 3, 8), cell(130, 3, 0)], BIG))).toBe('noop');
+    expect(grid.tileBytes(1)).toBeNull();
+  });
+
+  it('copies only changed tiles, preserves the byte budget and reverts the final values', () => {
+    const grid = new TileGrid(256, 128, 1);
+    must(buildTileWrite(grid, [cell(2, 3, 17), cell(130, 3, 8)], BIG)).apply();
+    const untouched = grid.tileBytes(0)!;
+    const changed = grid.tileBytes(1)!;
+    const noOpClone = vi.spyOn(untouched, 'slice');
+    const changedClone = vi.spyOn(changed, 'slice');
+
+    const writes = [cell(2, 3, 17), cell(130, 3, 29), cell(130, 3, 10)];
+    expect(codeOf(buildTileWrite(grid, writes, 2 * TILE * TILE - 1))).toBe('too-large');
+    expect(noOpClone).not.toHaveBeenCalled();
+    expect(changedClone).not.toHaveBeenCalled();
+
+    const command = must(buildTileWrite(grid, writes, 2 * TILE * TILE));
+    expect(command.bytes).toBe(2 * TILE * TILE);
+    expect(command.label).toBe('tile write (1 tile)');
+    expect(noOpClone).not.toHaveBeenCalled();
+    command.apply();
+    expect(grid.cellValue(130, 3)).toEqual(new Uint8Array([10]));
+    command.revert();
+    expect(grid.tileBytes(0)).toBe(untouched);
+    expect(grid.tileBytes(1)).toBe(changed);
+  });
+
+  it('detects cancellation even after a stroke becomes dense', () => {
+    const grid = new TileGrid(128, 128, 1);
+    const dirty = Array.from({ length: 300 }, (_, i) => cell(i % 128, Math.floor(i / 128), 12));
+    const restore = Array.from({ length: 300 }, (_, i) => cell(i % 128, Math.floor(i / 128), 0));
+
+    expect(codeOf(buildTileWrite(grid, [...dirty, ...restore], BIG))).toBe('noop');
+    expect(grid.tileBytes(0)).toBeNull();
+
+    const command = must(buildTileWrite(grid, [...dirty, cell(0, 0, 19)], BIG));
+    expect(command.bytes).toBe(TILE * TILE);
+    command.apply();
+    expect(grid.cellValue(0, 0)).toEqual(new Uint8Array([19]));
+    expect(grid.cellValue(1, 0)).toEqual(new Uint8Array([12]));
+    command.revert();
+    expect(grid.tileBytes(0)).toBeNull();
+  });
+
+  it('matches sequential last-write-wins semantics for multi-channel sparse and dense edits', () => {
+    const grid = new TileGrid(256, 256, 4);
+    const seed: CellWrite = { x: 15, y: 15, channels: 4, value: new Uint8Array([1, 2, 3, 4]) };
+    must(buildTileWrite(grid, [seed], BIG)).apply();
+    const before = grid.snapshot();
+    const expected = before.slice();
+    const writes: CellWrite[] = [];
+    let state = 0x13579bdf;
+    for (let i = 0; i < 900; i += 1) {
+      // Concentrate most writes in one tile so that the dense fallback is exercised.
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      const x = i % 5 === 0 ? 128 + (state % 128) : state % 128;
+      const y = i % 5 === 0 ? 128 + ((state >>> 8) % 128) : (state >>> 8) % 128;
+      const value = new Uint8Array([state & 255, (state >>> 8) & 255, (state >>> 16) & 255, i & 255]);
+      writes.push({ x, y, channels: 4, value });
+      expected.set(value, (y * grid.width + x) * 4);
+    }
+
+    const command = must(buildTileWrite(grid, writes, BIG));
+    expect(grid.snapshot()).toEqual(before);
+    command.apply();
+    expect(grid.snapshot()).toEqual(expected);
+    command.revert();
+    expect(grid.snapshot()).toEqual(before);
   });
 });
