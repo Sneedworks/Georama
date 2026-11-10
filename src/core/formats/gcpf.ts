@@ -315,10 +315,9 @@ export function encodeGcpf(payload: Uint8Array, opts: { blockSize?: number } = {
   const blockCount = fullBlocks + 1;
   const lastSize = totalSize % blockSize;
   const tableEnd = 16 + 4 * blockCount;
-  const capacity = tableEnd + fullBlocks * fastlzMaxCompressedSize(blockSize) + fastlzMaxCompressedSize(Math.max(16, lastSize)) + 4;
-  const output = allocate(capacity);
-  output.set(MAGIC);
-  const view = new DataView(output.buffer);
+  const header = allocate(tableEnd);
+  header.set(MAGIC);
+  const view = new DataView(header.buffer);
   view.setUint32(4, 0, true);
   view.setUint32(8, blockSize, true);
   view.setUint32(12, totalSize, true);
@@ -326,22 +325,47 @@ export function encodeGcpf(payload: Uint8Array, opts: { blockSize?: number } = {
   try { table = new Uint32Array(HASH_SIZE); }
   catch { throw new GcpfError('LIMIT', 'Cannot allocate FastLZ hash table'); }
   const padded = allocate(16);
-  let offset = tableEnd;
+
+  // Compress directly into bounded slabs. This avoids reserving worst-case space for every
+  // block at once, while still giving compressInto its required worst-case room per block.
+  const maxSlab = 1024 * 1024;
+  const compressedBound = fullBlocks * fastlzMaxCompressedSize(blockSize) +
+    fastlzMaxCompressedSize(Math.max(16, lastSize));
+  // Small saves retain one worst-case slab, avoiding growth/copies for ordinary small files.
+  let nextSlabSize = totalSize <= 512 * 1024 ? compressedBound : Math.min(128 * 1024, compressedBound);
+  const slabs: Array<{ data: Uint8Array; used: number }> = [];
+  let current: { data: Uint8Array; used: number } | undefined;
+  let compressedSize = 0;
   for (let i = 0; i < blockCount; i++) {
     const length = i === fullBlocks ? lastSize : blockSize;
+    const bound = fastlzMaxCompressedSize(Math.max(16, length));
+    if (current === undefined || current.data.length - current.used < bound) {
+      const data = allocate(Math.max(nextSlabSize, bound));
+      current = { data, used: 0 };
+      slabs.push(current);
+      nextSlabSize = Math.min(maxSlab, data.length * 2);
+    }
     let count: number;
     if (length < 16) {
       padded.fill(0);
       for (let k = 0; k < length; k++) padded[k] = payload[i * blockSize + k];
-      count = compressInto(padded, 0, 16, output, offset, table);
+      count = compressInto(padded, 0, 16, current.data, current.used, table);
     } else {
-      count = compressInto(payload, i * blockSize, length, output, offset, table);
+      count = compressInto(payload, i * blockSize, length, current.data, current.used, table);
     }
     view.setUint32(16 + 4 * i, count, true);
-    offset += count;
+    current.used += count;
+    compressedSize += count;
+  }
+
+  // Assemble exactly once; unlike a subarray, the returned view owns only its encoded bytes.
+  const output = allocate(tableEnd + compressedSize + 4);
+  output.set(header);
+  let offset = tableEnd;
+  for (const slab of slabs) {
+    output.set(slab.data.subarray(0, slab.used), offset);
+    offset += slab.used;
   }
   output.set(MAGIC, offset);
-  // Only one full compressed-output copy; the returned buffer is transferable.
-  try { return output.slice(0, offset + 4); }
-  catch { throw new GcpfError('LIMIT', 'Cannot allocate exact compressed output'); }
+  return output;
 }
