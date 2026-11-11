@@ -79,8 +79,8 @@ describe('decodeAssetText', () => {
 
 const folderJson = '{"name":"Juniper Test","radius":12,"offset_x":1,"offset_y":-2,"draw_mode":"sample_color"}';
 const imagesJson =
-  '{"07":{"name":"Hall 07","radius":103,"offset_x":0,"offset_y":0,"draw_mode":"normal"},' +
-  '"stall 1":{"name":"Stall 1","radius":57,"offset_x":0,"offset_y":-4,"draw_mode":"custom_colors"}}';
+  '{"07":{"name":"Fixture 07","radius":64,"offset_x":0,"offset_y":0,"draw_mode":"normal"},' +
+  '"fixture 1":{"name":"Fixture 1","radius":32,"offset_x":0,"offset_y":-4,"draw_mode":"custom_colors"}}';
 
 describe('parseSymbolSet folder shape', () => {
   it('parses a valid folder descriptor', () => {
@@ -131,10 +131,10 @@ describe('parseSymbolSet images shape', () => {
     expect(file.shape).toBe('images');
     if (file.shape !== 'images') throw new Error('unreachable');
     expect(file.entries.size).toBe(2);
-    expect(file.entries.get('07')).toEqual({ name: 'Hall 07', radius: 103, offsetX: 0, offsetY: 0, drawMode: 'normal' });
-    expect(file.entries.get('stall 1')).toEqual({
-      name: 'Stall 1',
-      radius: 57,
+    expect(file.entries.get('07')).toEqual({ name: 'Fixture 07', radius: 64, offsetX: 0, offsetY: 0, drawMode: 'normal' });
+    expect(file.entries.get('fixture 1')).toEqual({
+      name: 'Fixture 1',
+      radius: 32,
       offsetX: 0,
       offsetY: -4,
       drawMode: 'custom_colors',
@@ -240,7 +240,7 @@ describe('symbolEntryFor', () => {
   });
   it('looks up by base name for images shape, null when absent', () => {
     const file: SymbolSetFile = parseSymbolSet(imagesJson);
-    expect((symbolEntryFor(file, '07') as SymbolEntry).radius).toBe(103);
+    expect((symbolEntryFor(file, '07') as SymbolEntry).radius).toBe(64);
     expect(symbolEntryFor(file, 'nope')).toBe(null);
   });
 });

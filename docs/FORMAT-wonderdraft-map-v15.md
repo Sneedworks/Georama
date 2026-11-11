@@ -14,7 +14,7 @@
 | … | … | blocks; each is an independent FastLZ level-1 stream (back-references never cross a block start) |
 | end | 4 | footer `GCPF` |
 
-All-zero blocks compress to ~57 bytes, which is why a ~<redacted> MB payload is a <redacted> MB file.
+All-zero blocks compress to ~<redacted> bytes, which is why a ~<redacted> MB payload is a <redacted> MB file.
 
 ## 2. Payload — Godot 3.x binary Variant (`File.store_var`)
 

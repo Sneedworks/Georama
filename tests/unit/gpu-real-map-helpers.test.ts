@@ -133,10 +133,10 @@ describe('passes', () => {
 });
 
 describe('planRealMap', () => {
-  // A 100 x 60 map on a 512 x 512 view with eight pan steps of (-32, -16). The expected values are worked out by hand
+  // A 128 x 64 map (powers of two) on a 512 x 512 view with eight pan steps of (-32, -16). The expected values are worked out by hand
   // from the view rules: 1:1 centres the map, a pan moves the view by its delta, and a zoom about the centre doubles
   // the scale while keeping the map point under the centre fixed.
-  const plan = planRealMap(100, 60, 512, 8, -32, -16);
+  const plan = planRealMap(128, 64, 512, 8, -32, -16);
 
   it('has 12 steps in order: 1:1 start, eight pans, two zooms, then the fit', () => {
     expect(plan.map((step) => step.name)).toEqual([
@@ -145,7 +145,7 @@ describe('planRealMap', () => {
   });
 
   it('starts at 1:1, centred on the view', () => {
-    expect(plan[0].view).toEqual({ scale: 1, tx: 206, ty: 226 });
+    expect(plan[0].view).toEqual({ scale: 1, tx: 192, ty: 224 });
   });
 
   it('moves each pan step by the fixed delta and keeps the scale', () => {
@@ -156,31 +156,31 @@ describe('planRealMap', () => {
       expect(after.tx - before.tx).toBe(-32);
       expect(after.ty - before.ty).toBe(-16);
     }
-    expect(plan[8].view).toEqual({ scale: 1, tx: -50, ty: 98 });
+    expect(plan[8].view).toEqual({ scale: 1, tx: -64, ty: 96 });
   });
 
   it('doubles the scale at each zoom, about the screen centre', () => {
-    expect(plan[9].view).toEqual({ scale: 2, tx: -356, ty: -60 });
-    expect(plan[10].view).toEqual({ scale: 4, tx: -968, ty: -376 });
-    // The map point under the screen centre stays at (306, 158) through both zooms.
+    expect(plan[9].view).toEqual({ scale: 2, tx: -384, ty: -64 });
+    expect(plan[10].view).toEqual({ scale: 4, tx: -1024, ty: -384 });
+    // The map point under the screen centre stays at (320, 160) through both zooms.
     const under = (v: { readonly scale: number; readonly tx: number; readonly ty: number }): number[] => [
       (256 - v.tx) / v.scale,
       (256 - v.ty) / v.scale,
     ];
-    expect(under(plan[8].view)).toEqual([306, 158]);
-    expect(under(plan[9].view)).toEqual([306, 158]);
-    expect(under(plan[10].view)).toEqual([306, 158]);
+    expect(under(plan[8].view)).toEqual([320, 160]);
+    expect(under(plan[9].view)).toEqual([320, 160]);
+    expect(under(plan[10].view)).toEqual([320, 160]);
   });
 
   it('ends with the fit view of the map', () => {
     const fit = plan[11].view;
-    expect(fit.scale).toBeCloseTo(5.12, 9);
+    expect(fit.scale).toBeCloseTo(4, 9);
     expect(fit.tx).toBeCloseTo(0, 9);
-    expect(fit.ty).toBeCloseTo(102.4, 9);
+    expect(fit.ty).toBeCloseTo(128, 9);
   });
 
   it('refuses a degenerate map', () => {
-    expect(() => planRealMap(0, 60, 512, 8, -32, -16)).toThrow(/refused/);
+    expect(() => planRealMap(0, 64, 512, 8, -32, -16)).toThrow(/refused/);
   });
 });
 

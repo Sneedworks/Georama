@@ -13,6 +13,8 @@ async function walk(dir: string, out: string[]): Promise<void> {
   }
 }
 
+// No count is pinned in this file. Every symbol and theme file must parse, and both kinds must be present;
+// the counts printed at run time stay on the machine that runs the test.
 describe.skipIf(!userData)('real user-data asset JSON', () => {
   it('parses every .wonderdraft_symbols and .wonderdraft_theme (counts only)', async () => {
     const assetsDir = path.join(userData, 'assets');
@@ -27,15 +29,11 @@ describe.skipIf(!userData)('real user-data asset JSON', () => {
       if (parsed.shape === 'folder') folder++;
       else images++;
     }
-    let themes = 0;
     for (const file of themeFiles) {
       parseThemeFile(decodeAssetText(await readFile(file)));
-      themes++;
     }
-    console.log(`symbols=${symbolFiles.length} folder=${folder} images=${images} themes=${themes}`);
-    expect(symbolFiles.length).toBe(57);
-    expect(folder).toBe(54);
-    expect(images).toBe(3);
-    expect(themes).toBe(7);
+    console.log(`symbols=${symbolFiles.length} folder=${folder} images=${images} themes=${themeFiles.length}`);
+    expect(symbolFiles.length).toBeGreaterThan(0);
+    expect(themeFiles.length).toBeGreaterThan(0);
   });
 });
