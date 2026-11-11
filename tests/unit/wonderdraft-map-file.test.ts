@@ -386,7 +386,7 @@ describe('validateWdMap V5 and V6: rasters', () => {
     expect(validateWdMap(same)).toEqual([]);
   });
 
-  it('V6: waterTint may differ from the map size (2 of the 57 corpus maps do), and a fractional map size is not compared', () => {
+  it('V6: waterTint may differ from the map size (observed in real maps), and a fractional map size is not compared', () => {
     const map = freshMap();
     map.mapWidth = 2;
     map.mapHeight = 2;

@@ -246,7 +246,7 @@ export interface WdRaster extends WdRecordMeta {
   dataPropIndex: number;
 }
 
-// A symbol texture is a path string or an embedded ImageTexture object (158 symbols in 27 of the 57 corpus maps).
+// A symbol texture is a path string or an embedded ImageTexture object (both observed in real maps).
 // Anything else, including the null Object, is not a texture.
 function readTexture(v: GdValue, path: string): string | GdObject {
   if (typeof v === 'string') return readString(v, path);

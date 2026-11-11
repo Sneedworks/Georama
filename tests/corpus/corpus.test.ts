@@ -3,7 +3,7 @@
 // PATH-style list separated by ':'; searched recursively) and is skipped, visibly, when none of them exists
 // (a collection on an unmounted volume is normal). GEORAMA_MAP_EXPECT, when set, is the exact number of
 // unique maps the run must cover, so a folder that silently holds fewer maps than you think fails the gate.
-// Not part of `npm test` (the real collection takes minutes and about 1.4 GiB): run it with `npm run corpus`.
+// Not part of `npm test` (the real collection takes minutes): run it with `npm run corpus`.
 // Private data: the report is written under the git-ignored `reports/` folder and is never committed.
 import { existsSync, statSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';

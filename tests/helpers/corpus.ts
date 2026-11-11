@@ -136,7 +136,7 @@ export interface RunOptions {
   /** The repository root that holds `scripts/wd-check.ts`; defaults to this checkout. */
   repoRoot?: string;
   timeoutMs?: number;
-  /** Run at low priority (`nice -n 10`): the real corpus takes minutes and about 1.4 GiB. */
+  /** Run at low priority (`nice -n 10`): the real corpus takes minutes. */
   nice?: boolean;
 }
 

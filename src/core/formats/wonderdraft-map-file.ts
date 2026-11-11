@@ -242,7 +242,7 @@ function validate(map: WdMap, issues: WdIssue[]): void {
   checkRaster(m, 'ground', issues);
   checkRaster(m, 'waterTint', issues);
   // V6: mask and ground match the map size whenever the map size is integral.
-  // waterTint dimensions are not checked: 2 of the 57 corpus maps differ there.
+  // waterTint dimensions are not checked: some corpus maps differ there.
   // A size that already failed V1 is not compared against: that comparison only
   // repeats the same bad value once per raster.
   if (mapWidthValid && mapHeightValid && Number.isInteger(mapWidth) && Number.isInteger(mapHeight)) {
